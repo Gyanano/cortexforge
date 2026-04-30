@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Claude Code local state (user-specific, not project-level)
+.claude/settings.local.json
+.claude/sessions/
+.claude/cache/
+
+# Forge runtime artifacts (generated at runtime, not checked in)
+.forge/pids.toml
+.forge/eventbus.log
+**/.forge/stdout.log
+**/.forge/stderr.log
+**/.forge/inbox/processed/
+
+# Build artifacts
+build/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
