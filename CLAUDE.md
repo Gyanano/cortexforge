@@ -13,7 +13,7 @@
 ## 顶层拓扑（强约束）
 - **N 级递归树**：根 Orchestrator (L0) + Domain Agents (L1) + Module Agents (L2+)。
 - **深度由 `forge.toml.max_depth` 约束**，每层用同一套 `spawn_child()` 函数（递归对称）。
-- **节点不能自己 spawn 子进程**，必须通过 outbox 请求 Orchestrator spawn（保证预算/depth/总数检查
+- **节点不能自己 spawn 子进程**。Domain Agent 通过 `.forge/spawn_requests.toml` 请求 Orchestrator spawn（保证预算/depth/总数检查
   走单点）。
 - 嵌入式分层（HAL / BSP / MW / APP / DRV / TEST 等）通过 `node.toml` 的 `role` 字段表达，
   **不**对应额外机制差异。
@@ -24,16 +24,17 @@
 | 文件 | 写入方 | 读取方 | 作用 |
 |------|--------|--------|------|
 | `<n>/.forge/state.toml` | 仅节点自己 | 父节点只读 | 状态机 + 进度 + 心跳 + verify 结果 |
-| `<n>/.forge/inbox/*.toml` | 父或兄弟（目录即队列） | 节点自己 | 任务 / 反馈 / kill 消息 |
-| `<n>/.forge/outbox/*.toml` | 节点自己 | Orchestrator 路由 | 请求 spawn / 汇报 / 回复 |
+| `<n>/.forge/inbox/*.toml` | Orchestrator / 父 / 兄弟（目录即队列） | 节点自己 | 任务 / 反馈 / kill / value_changed |
+| `<n>/.forge/outbox/*.toml` | 节点自己 | Orchestrator 路由 | 汇报 / 回复 / 依赖上报 |
 | `forge.toml` | 人写 | Orchestrator + 所有节点 | 全局配置（depth / budget / heartbeat / model） |
-| `.forge/eventbus.log` | 所有节点（追加写） | Orchestrator / 人 | 项目级唯一事件总线（NDJSON） |
+| `.forge/eventbus.log` | 仅 Orchestrator（追加写） | Orchestrator / 人 | 项目级唯一事件总线（NDJSON） |
 
 字段 schema 详见 [`docs/01-architecture.md` §4](./docs/01-architecture.md)。
 
 ## 状态机（8 态）
-`idle → assigned → planning → implementing → verifying → delivered / blocked → dead`
+`idle → assigned → planning → implementing ↔ blocked → verifying → delivered / dead`
 
+- `blocked` 用于等待外部条件满足（Module: 依赖值；Domain: 子节点完成）；verify 失败回 `implementing` 修代码，达到 `max_retries` 直接 `dead`。
 - 每节点本地 `state.toml`，**写入者唯一（自己）**。
 - 父对子唯一的写操作：把子标为 `dead`（枯枝清理）。
 - 详见 [`docs/01-architecture.md` §3](./docs/01-architecture.md)。
@@ -41,7 +42,7 @@
 ## 心跳 + 坏枝检测（强约束）
 - 每节点每 `heartbeat_interval_sec` 秒刷新 `state.toml.last_heartbeat`。
 - 父扫子心跳超时 → 标 `dead` → 递归杀子树 → 写 eventbus。
-- 进度签名 hash：连续 N 次心跳 summary 不变 → `suspected_stuck` 事件。
+- 进度签名 hash：连续 `stuck_threshold_heartbeats` 次心跳 summary 不变 → `suspected_stuck` 事件。
 - 坏枝传播：父决定可降级完成 vs 升级阻塞（按需向上传播，不一刀切）。
 
 ## 交付物闸门（强约束）
@@ -52,7 +53,8 @@
 
 ## 节点纪律
 - **不读不写兄弟节点目录**。共享代码（HAL、公共 inc 等）通过父节点协调或 inbox 请求。
-- **不直接 spawn 子进程**。需要新 children 时，写 outbox 请求 Orchestrator spawn。
+- **不直接 spawn 子进程**。需要新 children 时，写 `spawn_requests.toml` 请求 Orchestrator spawn。
+- **Domain Agent 不直接写子节点 tasks.toml**。依赖匹配和 tasks.toml 写入由 Orchestrator 统一负责。
 - 每次有意义的进展后**覆盖式**更新 `state.toml`。
 - 交付前自己跑一次 `verify.sh`。
 - 把模块自己的工具链假设（编译命令、芯片型号、烧录器）写进 `<module>/CLAUDE.md`，不要污染本
