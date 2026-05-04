@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use forge_core::error::ForgeResult;
-use forge_core::protocol::{NeedsDeclaration, ProvidesDeclaration, ResolvedValues, TaskList, SpawnRequests};
+use forge_core::protocol::{
+    NeedsDeclaration, ProvidesDeclaration, ResolvedValues, SpawnRequests, TaskList,
+};
 use forge_core::state::{NodeStatus, StateMachine};
 use forge_core::types::{BudgetTracker, NodeDepth, NodeName};
 
@@ -48,25 +50,18 @@ impl NodeRuntime {
     ///
     /// Writes the PID file and initial state.toml (state=idle).
     pub fn from_env() -> ForgeResult<Self> {
-        let name = std::env::var("FORGE_NODE_NAME")
-            .unwrap_or_else(|_| "unknown-node".into());
+        let name = std::env::var("FORGE_NODE_NAME").unwrap_or_else(|_| "unknown-node".into());
         let depth_str = std::env::var("FORGE_NODE_DEPTH").unwrap_or_else(|_| "1".into());
         let depth = depth_str.parse().unwrap_or(1);
         let parent = std::env::var("FORGE_PARENT").unwrap_or_default();
-        let root = PathBuf::from(
-            std::env::var("FORGE_ROOT").unwrap_or_else(|_| ".".into()),
-        );
-        let is_wake_up = std::env::var("FORGE_IS_WAKE_UP")
-            .map(|v| v == "true")
-            .unwrap_or(false);
+        let root = PathBuf::from(std::env::var("FORGE_ROOT").unwrap_or_else(|_| ".".into()));
+        let is_wake_up = std::env::var("FORGE_IS_WAKE_UP").map(|v| v == "true").unwrap_or(false);
 
         // Determine cwd: FORGE_ROOT + relative path from env or current dir
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-        let max_retries = std::env::var("FORGE_MAX_RETRIES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(3);
+        let max_retries =
+            std::env::var("FORGE_MAX_RETRIES").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
         let max_wallclock = std::env::var("FORGE_MAX_WALLCLOCK_SEC")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -89,10 +84,7 @@ impl NodeRuntime {
             resolved_file: cwd.join("shared/resolved.toml"),
             tasks_file: cwd.join("shared/tasks.toml"),
             spawn_requests_file: forge_dir.join("spawn_requests.toml"),
-            token_tracker: Arc::new(Mutex::new(BudgetTracker::new(
-                None,
-                Some(max_wallclock),
-            ))),
+            token_tracker: Arc::new(Mutex::new(BudgetTracker::new(None, Some(max_wallclock)))),
             shutdown: Arc::new(AtomicBool::new(false)),
             start_time: Instant::now(),
         };
@@ -131,7 +123,7 @@ impl NodeRuntime {
     /// Start the heartbeat watchdog thread.
     ///
     /// Returns a handle that can be joined on shutdown.
-    #[must_use] 
+    #[must_use]
     pub fn start_heartbeat(&self, interval_sec: u64) -> std::thread::JoinHandle<()> {
         let state_file = self.state_file.clone();
         let shutdown = self.shutdown.clone();
@@ -222,16 +214,13 @@ impl NodeRuntime {
     }
 
     /// Check if budget is exhausted.
-    #[must_use] 
+    #[must_use]
     pub fn budget_exhausted(&self) -> bool {
-        self.token_tracker
-            .lock()
-            .map(|t| t.is_exhausted())
-            .unwrap_or(false)
+        self.token_tracker.lock().map(|t| t.is_exhausted()).unwrap_or(false)
     }
 
     /// Get elapsed wallclock seconds.
-    #[must_use] 
+    #[must_use]
     pub fn elapsed_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
@@ -258,7 +247,9 @@ impl NodeRuntime {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output()
-            .map_err(|e| forge_core::error::ForgeError::Other(format!("verify.sh exec failed: {e}")))?;
+            .map_err(|e| {
+                forge_core::error::ForgeError::Other(format!("verify.sh exec failed: {e}"))
+            })?;
 
         Ok(VerifyOutcome {
             exit_code: output.status.code().unwrap_or(-1),
@@ -277,7 +268,7 @@ pub struct VerifyOutcome {
 }
 
 impl VerifyOutcome {
-    #[must_use] 
+    #[must_use]
     pub const fn passed(&self) -> bool {
         self.exit_code == 0
     }
@@ -320,7 +311,11 @@ pub fn run_node_loop(rt: &mut NodeRuntime, heartbeat_interval: u64) -> ForgeResu
         if outcome.passed() {
             rt.state.deliver()?;
         } else {
-            let fail_msg = format!("{} | {}", outcome.stderr.lines().next().unwrap_or("unknown"), outcome.stdout.lines().next().unwrap_or(""));
+            let fail_msg = format!(
+                "{} | {}",
+                outcome.stderr.lines().next().unwrap_or("unknown"),
+                outcome.stdout.lines().next().unwrap_or("")
+            );
             if rt.state.verify_retry_count >= rt.state.max_retries {
                 rt.state.die_verify_exhausted(&fail_msg)?;
             } else {
@@ -383,7 +378,9 @@ fn run_wake_flow(rt: &mut NodeRuntime) -> ForgeResult<NodeStatus> {
 mod tests {
     use super::*;
 
-    fn setup_test_cwd() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf) {
+    fn setup_test_cwd()
+    -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf)
+    {
         let dir = tempfile::tempdir().unwrap();
         let cwd = dir.path().to_path_buf();
         let forge_dir = cwd.join(".forge");
@@ -397,12 +394,32 @@ mod tests {
         let resolved_file = shared_dir.join("resolved.toml");
         let tasks_file = shared_dir.join("tasks.toml");
         let spawn_requests_file = forge_dir.join("spawn_requests.toml");
-        (dir, cwd, state_file, inbox_dir, needs_file, provides_file, resolved_file, tasks_file, spawn_requests_file)
+        (
+            dir,
+            cwd,
+            state_file,
+            inbox_dir,
+            needs_file,
+            provides_file,
+            resolved_file,
+            tasks_file,
+            spawn_requests_file,
+        )
     }
 
     #[test]
     fn test_runtime_initialize() {
-        let (_dir, cwd, state_file, inbox_dir, needs_file, provides_file, resolved_file, tasks_file, spawn_requests_file) = setup_test_cwd();
+        let (
+            _dir,
+            cwd,
+            state_file,
+            inbox_dir,
+            needs_file,
+            provides_file,
+            resolved_file,
+            tasks_file,
+            spawn_requests_file,
+        ) = setup_test_cwd();
 
         let mut rt = NodeRuntime {
             name: NodeName::new("test-init"),
@@ -434,7 +451,17 @@ mod tests {
 
     #[test]
     fn test_runtime_file_helpers() {
-        let (_dir, cwd, state_file, inbox_dir, needs_file, provides_file, resolved_file, tasks_file, spawn_requests_file) = setup_test_cwd();
+        let (
+            _dir,
+            cwd,
+            state_file,
+            inbox_dir,
+            needs_file,
+            provides_file,
+            resolved_file,
+            tasks_file,
+            spawn_requests_file,
+        ) = setup_test_cwd();
 
         let mut rt = NodeRuntime {
             name: NodeName::new("test-files"),
@@ -472,7 +499,11 @@ mod tests {
         let mut provides = ProvidesDeclaration::default();
         provides.provides.insert(
             "APB1_CLK".into(),
-            forge_core::protocol::ProvideEntry { value: "42MHz".into(), desc: "test".into(), seq: 1 },
+            forge_core::protocol::ProvideEntry {
+                value: "42MHz".into(),
+                desc: "test".into(),
+                seq: 1,
+            },
         );
         rt.write_provides(&provides).unwrap();
         assert!(provides_file.exists());
@@ -480,7 +511,17 @@ mod tests {
 
     #[test]
     fn test_budget_tracking() {
-        let (_dir, cwd, state_file, inbox_dir, needs_file, provides_file, resolved_file, tasks_file, spawn_requests_file) = setup_test_cwd();
+        let (
+            _dir,
+            cwd,
+            state_file,
+            inbox_dir,
+            needs_file,
+            provides_file,
+            resolved_file,
+            tasks_file,
+            spawn_requests_file,
+        ) = setup_test_cwd();
 
         let mut rt = NodeRuntime {
             name: NodeName::new("test-budget"),
@@ -509,10 +550,18 @@ mod tests {
 
     #[test]
     fn test_verify_outcome() {
-        let outcome = VerifyOutcome { exit_code: 0, stdout: "all tests passed".into(), stderr: String::new() };
+        let outcome = VerifyOutcome {
+            exit_code: 0,
+            stdout: "all tests passed".into(),
+            stderr: String::new(),
+        };
         assert!(outcome.passed());
 
-        let fail = VerifyOutcome { exit_code: 1, stdout: String::new(), stderr: "test_uart_tx_overrun timeout".into() };
+        let fail = VerifyOutcome {
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: "test_uart_tx_overrun timeout".into(),
+        };
         assert!(!fail.passed());
     }
 }

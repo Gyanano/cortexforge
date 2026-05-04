@@ -22,27 +22,27 @@ impl ForgePaths {
         Self { root: root.into() }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn root(&self) -> &std::path::Path {
         &self.root
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn state_file(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/state.toml")
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn inbox_dir(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/inbox")
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn shared_dir(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join("shared")
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn pid_file(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/pid")
     }
@@ -119,10 +119,7 @@ pub struct GlobalBudget {
 
 impl Default for GlobalBudget {
     fn default() -> Self {
-        Self {
-            max_tokens_total: Some(5_000_000),
-            max_wallclock_total_sec: Some(14400),
-        }
+        Self { max_tokens_total: Some(5_000_000), max_wallclock_total_sec: Some(14400) }
     }
 }
 

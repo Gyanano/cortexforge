@@ -47,10 +47,7 @@ pub fn check_file_access(cwd: &Path, target: &Path) -> ForgeResult<()> {
 /// Check if a bash command is in the node's allowlist.
 ///
 /// Returns the command prefix (first word) for matching.
-pub fn check_bash_command(
-    allowlist: &[String],
-    command: &str,
-) -> ForgeResult<()> {
+pub fn check_bash_command(allowlist: &[String], command: &str) -> ForgeResult<()> {
     if allowlist.is_empty() {
         return Err(ForgeError::Permission(
             "bash execution denied: no allowlist configured".into(),
@@ -75,9 +72,7 @@ pub fn check_network_access(network_allowed: bool) -> ForgeResult<()> {
     if network_allowed {
         Ok(())
     } else {
-        Err(ForgeError::Permission(
-            "network access denied: not enabled in node.toml".into(),
-        ))
+        Err(ForgeError::Permission("network access denied: not enabled in node.toml".into()))
     }
 }
 
@@ -103,8 +98,7 @@ pub fn check_spawn_authority(role: &str) -> ForgeResult<()> {
 /// Sandbox configuration — reserved interface for §9.
 ///
 /// Post-MVP hardening will support chroot / bubblewrap / Docker backends.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum SandboxConfig {
     /// No sandbox (MVP default).
     #[default]
@@ -117,9 +111,8 @@ pub enum SandboxConfig {
     Docker { image: String },
 }
 
-
 impl SandboxConfig {
-    #[must_use] 
+    #[must_use]
     pub const fn is_enabled(&self) -> bool {
         !matches!(self, Self::None)
     }

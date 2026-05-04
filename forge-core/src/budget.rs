@@ -10,7 +10,7 @@ use crate::types::NodeDepth;
 ///
 /// Checks both global `max_tokens_total` and the per-layer token budget,
 /// returning the tighter constraint. Used by spawn pre-checks (§5.1).
-#[must_use] 
+#[must_use]
 pub fn remaining_budget(
     config: &ForgeConfig,
     child_depth: NodeDepth,
@@ -21,11 +21,8 @@ pub fn remaining_budget(
     let layer = child_depth.as_u32();
 
     // Check global budget
-    let global_remaining = config
-        .budget
-        .global
-        .max_tokens_total
-        .map(|max| max.saturating_sub(current_total_tokens));
+    let global_remaining =
+        config.budget.global.max_tokens_total.map(|max| max.saturating_sub(current_total_tokens));
 
     // Check per-layer budget
     let layer_remaining = config
@@ -56,7 +53,9 @@ pub fn remaining_budget(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{BudgetSection, ForgeSection, GlobalBudget, LayerBudgetEntry, PathsSection};
+    use crate::config::{
+        BudgetSection, ForgeSection, GlobalBudget, LayerBudgetEntry, PathsSection,
+    };
 
     fn test_config() -> ForgeConfig {
         ForgeConfig {

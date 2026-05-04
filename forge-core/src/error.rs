@@ -15,11 +15,7 @@ pub enum ForgeError {
     Timeout(String),
 
     #[error("invalid state transition for node '{node}': {from} -> {to}")]
-    StateInvalid {
-        node: NodeName,
-        from: String,
-        to: String,
-    },
+    StateInvalid { node: NodeName, from: String, to: String },
 
     #[error("permission denied: {0}")]
     Permission(String),

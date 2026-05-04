@@ -65,7 +65,7 @@ pub struct HeartbeatMonitor {
 }
 
 impl HeartbeatMonitor {
-    #[must_use] 
+    #[must_use]
     pub fn new(config: &ForgeConfig) -> Self {
         Self {
             records: HashMap::new(),
@@ -89,11 +89,7 @@ impl HeartbeatMonitor {
     /// Scan one node's state.toml and update tracking.
     ///
     /// Returns a `ScanResult` indicating what action to take.
-    pub fn scan_node(
-        &mut self,
-        node_name: &str,
-        is_alive: bool,
-    ) -> ForgeResult<ScanResult> {
+    pub fn scan_node(&mut self, node_name: &str, is_alive: bool) -> ForgeResult<ScanResult> {
         let record = self
             .records
             .get_mut(node_name)
@@ -104,9 +100,9 @@ impl HeartbeatMonitor {
         // Read state if file exists
         let state = crate::safe_read_toml::<NodeState>(&state_path);
 
-        let current_status = state
-            .as_ref()
-            .map_or(NodeStatus::Dead, |s| s.state.current.parse::<NodeStatus>().unwrap_or(NodeStatus::Dead));
+        let current_status = state.as_ref().map_or(NodeStatus::Dead, |s| {
+            s.state.current.parse::<NodeStatus>().unwrap_or(NodeStatus::Dead)
+        });
 
         record.current_status = current_status;
 
@@ -121,9 +117,7 @@ impl HeartbeatMonitor {
             }
             (true, NodeStatus::Dead) => {
                 // Process alive but claims dead — force kill
-                ScanAction::ForceKill {
-                    reason: "state=dead but process alive".into(),
-                }
+                ScanAction::ForceKill { reason: "state=dead but process alive".into() }
             }
             (true, _) => {
                 // Normal running — check heartbeat freshness
@@ -135,9 +129,7 @@ impl HeartbeatMonitor {
                     let elapsed_sec = elapsed.num_seconds().max(0) as u64;
 
                     if elapsed_sec > self.heartbeat_timeout.as_secs() {
-                        ScanAction::HeartbeatTimeout {
-                            missed_for_sec: elapsed_sec,
-                        }
+                        ScanAction::HeartbeatTimeout { missed_for_sec: elapsed_sec }
                     } else {
                         // Check for stuck progress
                         let new_hash = HeartbeatRecord::hash_summary(&s.progress.summary);
@@ -166,19 +158,13 @@ impl HeartbeatMonitor {
                 }
             }
             (false, NodeStatus::Delivered) => {
-                ScanAction::Reap {
-                    reason: "delivered and exited".into(),
-                }
+                ScanAction::Reap { reason: "delivered and exited".into() }
             }
             (false, NodeStatus::Blocked) => {
                 // Defer to Pass 7b for final dependency determination (§6.2 fix #113)
                 ScanAction::DeferToDependencyCheck
             }
-            (false, NodeStatus::Dead) => {
-                ScanAction::Reap {
-                    reason: "dead and exited".into(),
-                }
-            }
+            (false, NodeStatus::Dead) => ScanAction::Reap { reason: "dead and exited".into() },
             (false, _) => {
                 // Process died unexpectedly
                 ScanAction::Crashed {
@@ -187,21 +173,17 @@ impl HeartbeatMonitor {
             }
         };
 
-        Ok(ScanResult {
-            node_name: node_name.to_string(),
-            current_status,
-            action,
-        })
+        Ok(ScanResult { node_name: node_name.to_string(), current_status, action })
     }
 
     /// Get the heartbeat record for a node.
-    #[must_use] 
+    #[must_use]
     pub fn get(&self, node_name: &str) -> Option<&HeartbeatRecord> {
         self.records.get(node_name)
     }
 
     /// Return names of all tracked nodes.
-    #[must_use] 
+    #[must_use]
     pub fn tracked_nodes(&self) -> Vec<&str> {
         self.records.keys().map(std::string::String::as_str).collect()
     }
@@ -262,7 +244,7 @@ pub enum PropagationDecision {
 ///
 /// §6.4: If the child's output is optional → `DegradeToPartial`.
 /// Otherwise → `EscalateBlocked`.
-#[must_use] 
+#[must_use]
 pub const fn decide_propagation(
     child_is_optional: bool,
     parent_has_other_providers: bool,
@@ -277,7 +259,7 @@ pub const fn decide_propagation(
 /// Check if a dependency chain should propagate death.
 ///
 /// Returns true if the requester should also be marked dead.
-#[must_use] 
+#[must_use]
 pub const fn should_propagate_death(
     provider_dead: bool,
     provider_has_value: bool,
@@ -292,13 +274,13 @@ pub const fn should_propagate_death(
 // ─── Suicide gate checks (§6.5) ─────────────────────────────────────────
 
 /// Check if a node should self-terminate based on verify retries.
-#[must_use] 
+#[must_use]
 pub const fn check_verify_exhausted(retry_count: u32, max_retries: u32) -> bool {
     retry_count >= max_retries
 }
 
 /// Check if wallclock budget is exhausted.
-#[must_use] 
+#[must_use]
 pub fn check_wallclock_exhausted(
     started_at: DateTime<FixedOffset>,
     max_wallclock_sec: u64,
@@ -313,9 +295,7 @@ pub fn check_wallclock_exhausted(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{
-        ProgressSection, StateSection,
-    };
+    use crate::protocol::{ProgressSection, StateSection};
 
     fn write_test_state(dir: &Path, current: &str, summary: &str, seq: u64) {
         let now: DateTime<FixedOffset> = Utc::now().into();
@@ -369,10 +349,7 @@ mod tests {
                 last_heartbeat: old_time,
                 sequence: 1,
             },
-            progress: ProgressSection {
-                summary: "old".into(),
-                ..Default::default()
-            },
+            progress: ProgressSection { summary: "old".into(), ..Default::default() },
             children_view: Default::default(),
             verify: Default::default(),
             budget_used: Default::default(),
@@ -451,7 +428,8 @@ mod tests {
         let r3 = monitor.scan_node("node-f", true).unwrap();
         assert!(
             matches!(r3.action, ScanAction::SuspectedStuck { .. }),
-            "expected SuspectedStuck, got {:?}", r3.action
+            "expected SuspectedStuck, got {:?}",
+            r3.action
         );
 
         // Scan 4: different summary → resets counter → Healthy
@@ -484,20 +462,11 @@ mod tests {
     #[test]
     fn test_propagation_decision() {
         // Optional child → degrade
-        assert_eq!(
-            decide_propagation(true, false),
-            PropagationDecision::DegradeToPartial
-        );
+        assert_eq!(decide_propagation(true, false), PropagationDecision::DegradeToPartial);
         // Has other providers → degrade
-        assert_eq!(
-            decide_propagation(false, true),
-            PropagationDecision::DegradeToPartial
-        );
+        assert_eq!(decide_propagation(false, true), PropagationDecision::DegradeToPartial);
         // Critical child, no alternative → escalate
-        assert_eq!(
-            decide_propagation(false, false),
-            PropagationDecision::EscalateBlocked
-        );
+        assert_eq!(decide_propagation(false, false), PropagationDecision::EscalateBlocked);
     }
 
     #[test]

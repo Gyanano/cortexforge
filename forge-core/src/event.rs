@@ -5,7 +5,6 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
-
 /// An event entry in the event bus log (one NDJSON line).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventEntry {
@@ -16,11 +15,7 @@ pub struct EventEntry {
 
 impl EventEntry {
     pub fn new(node: impl Into<String>, event: EventType) -> Self {
-        Self {
-            ts: chrono::Utc::now().into(),
-            node: node.into(),
-            event,
-        }
+        Self { ts: chrono::Utc::now().into(), node: node.into(), event }
     }
 }
 
@@ -48,74 +43,35 @@ pub enum EventType {
         wake_up: bool,
     },
     #[serde(rename = "node_dead")]
-    NodeDead {
-        reason: String,
-    },
+    NodeDead { reason: String },
     #[serde(rename = "branch_dead")]
-    BranchDead {
-        root_of_dead_branch: String,
-        reason: String,
-    },
+    BranchDead { root_of_dead_branch: String, reason: String },
     #[serde(rename = "orphan_detected")]
-    OrphanDetected {
-        node: String,
-        pid: u32,
-    },
+    OrphanDetected { node: String, pid: u32 },
     #[serde(rename = "suspected_stuck")]
-    SuspectedStuck {
-        subject: String,
-        unchanged_heartbeats: u32,
-    },
+    SuspectedStuck { subject: String, unchanged_heartbeats: u32 },
 
     // ── Dependency events ──
     #[serde(rename = "dependency_discovered")]
-    DependencyDiscovered {
-        key: String,
-        from: String,
-        to: String,
-    },
+    DependencyDiscovered { key: String, from: String, to: String },
     #[serde(rename = "dependency_matched")]
-    DependencyMatched {
-        requester: String,
-        provider: String,
-        key: String,
-    },
+    DependencyMatched { requester: String, provider: String, key: String },
     #[serde(rename = "dependency_resolved")]
-    DependencyResolved {
-        requester: String,
-        key: String,
-    },
+    DependencyResolved { requester: String, key: String },
     #[serde(rename = "value_changed")]
-    ValueChanged {
-        target: String,
-        key: String,
-    },
+    ValueChanged { target: String, key: String },
     #[serde(rename = "cross_layer_resolved")]
-    CrossLayerResolved {
-        requester: String,
-        key: String,
-    },
+    CrossLayerResolved { requester: String, key: String },
 
     // ── Anomaly events ──
     #[serde(rename = "deadlock")]
-    Deadlock {
-        cycle: Vec<String>,
-    },
+    Deadlock { cycle: Vec<String> },
     #[serde(rename = "new_deadlock_prevented")]
-    NewDeadlockPrevented {
-        new_edges: Vec<String>,
-    },
+    NewDeadlockPrevented { new_edges: Vec<String> },
     #[serde(rename = "heartbeat_miss")]
-    HeartbeatMiss {
-        subject: String,
-        missed_for_sec: u32,
-        action: String,
-    },
+    HeartbeatMiss { subject: String, missed_for_sec: u32, action: String },
     #[serde(rename = "spawn_wake_failed")]
-    SpawnWakeFailed {
-        provider: String,
-        key: String,
-    },
+    SpawnWakeFailed { provider: String, key: String },
     #[serde(rename = "spawn_refused")]
     SpawnRefused {
         reason: String,
@@ -127,25 +83,13 @@ pub enum EventType {
         cwd: Option<String>,
     },
     #[serde(rename = "spawn_failed")]
-    SpawnFailed {
-        child: String,
-        reason: String,
-    },
+    SpawnFailed { child: String, reason: String },
     #[serde(rename = "dependency_escalated")]
-    DependencyEscalated {
-        requester: String,
-        key: String,
-    },
+    DependencyEscalated { requester: String, key: String },
     #[serde(rename = "escalation_failed")]
-    EscalationFailed {
-        key: String,
-        requester: String,
-    },
+    EscalationFailed { key: String, requester: String },
     #[serde(rename = "dependency_chain_propagation")]
-    DependencyChainPropagation {
-        node: String,
-        reason: String,
-    },
+    DependencyChainPropagation { node: String, reason: String },
 }
 
 impl std::fmt::Display for EventType {
@@ -177,7 +121,7 @@ impl std::fmt::Display for EventType {
 
 impl EventType {
     /// Return the event type name as a static string, used for the NDJSON `event` field.
-    #[must_use] 
+    #[must_use]
     pub const fn name(&self) -> &'static str {
         match self {
             Self::State { .. } => "state",
@@ -229,10 +173,7 @@ mod tests {
     fn test_event_entry_roundtrip() {
         let entry = EventEntry::new(
             "test-node",
-            EventType::DependencyResolved {
-                requester: "mod-a".into(),
-                key: "APB1_CLK".into(),
-            },
+            EventType::DependencyResolved { requester: "mod-a".into(), key: "APB1_CLK".into() },
         );
         let json = serde_json::to_string(&entry).unwrap();
         let back: EventEntry = serde_json::from_str(&json).unwrap();

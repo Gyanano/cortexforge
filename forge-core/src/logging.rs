@@ -24,10 +24,7 @@ pub fn init_orchestrator(verbose: bool) {
             .with_filter(env_filter);
         tracing_subscriber::registry().with(layer).init();
     } else {
-        let layer = fmt::layer()
-            .with_target(false)
-            .with_thread_ids(false)
-            .with_filter(env_filter);
+        let layer = fmt::layer().with_target(false).with_thread_ids(false).with_filter(env_filter);
         tracing_subscriber::registry().with(layer).init();
     }
 }
@@ -38,9 +35,7 @@ pub fn init_orchestrator(verbose: bool) {
 pub fn init_node(node_name: &str, verbose: bool) {
     let level = if verbose { "debug" } else { "info" };
     let env_filter = EnvFilter::new(format!("forge_sdk={level}"));
-    let layer = fmt::layer()
-        .with_target(false)
-        .with_filter(env_filter);
+    let layer = fmt::layer().with_target(false).with_filter(env_filter);
     tracing_subscriber::registry().with(layer).init();
     tracing::info!(node = %node_name, "node logging initialized");
 }

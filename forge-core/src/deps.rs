@@ -15,8 +15,8 @@ use crate::error::ForgeResult;
 use crate::event::EventType;
 use crate::eventbus::EventBus;
 use crate::protocol::{
-    EscalatedNeed, EscalatedStatus, EscalatedTable, NeedsDeclaration, NodeDefinition,
-    NodeState, ProvidesDeclaration, ResolvedEntry, ResolvedValues, TaskList,
+    EscalatedNeed, EscalatedStatus, EscalatedTable, NeedsDeclaration, NodeDefinition, NodeState,
+    ProvidesDeclaration, ResolvedEntry, ResolvedValues, TaskList,
 };
 use crate::state::NodeStatus;
 
@@ -55,7 +55,7 @@ pub struct DepGraph {
 }
 
 impl DepGraph {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -64,7 +64,7 @@ impl DepGraph {
 
     /// Recursively collect all declared nodes.
     /// Fix #98, #115: single function, renamed from `collect_all_active_nodes`.
-    #[must_use] 
+    #[must_use]
     pub fn collect_all_declared_nodes(root: &Path) -> Vec<(String, PathBuf)> {
         let mut nodes = Vec::new();
         Self::collect_recursive(root, root, &mut nodes);
@@ -79,9 +79,13 @@ impl DepGraph {
         };
         for entry in entries.filter_map(std::result::Result::ok) {
             let path = entry.path();
-            if !path.is_dir() { continue; }
+            if !path.is_dir() {
+                continue;
+            }
             let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
-            if name.starts_with('.') { continue; }
+            if name.starts_with('.') {
+                continue;
+            }
 
             let node_toml = path.join("node.toml");
             if node_toml.exists() {
@@ -123,21 +127,19 @@ impl DepGraph {
             }
 
             // Read protocol files
-            let needs = crate::safe_read_toml::<NeedsDeclaration>(
-                &cwd.join("shared/needs.toml"),
-            ).unwrap_or_default();
+            let needs = crate::safe_read_toml::<NeedsDeclaration>(&cwd.join("shared/needs.toml"))
+                .unwrap_or_default();
 
-            let provides = crate::safe_read_toml::<ProvidesDeclaration>(
-                &cwd.join("shared/provides.toml"),
-            ).unwrap_or_default();
+            let provides =
+                crate::safe_read_toml::<ProvidesDeclaration>(&cwd.join("shared/provides.toml"))
+                    .unwrap_or_default();
 
-            let resolved = crate::safe_read_toml::<ResolvedValues>(
-                &cwd.join("shared/resolved.toml"),
-            ).unwrap_or_default();
+            let resolved =
+                crate::safe_read_toml::<ResolvedValues>(&cwd.join("shared/resolved.toml"))
+                    .unwrap_or_default();
 
-            let tasks = crate::safe_read_toml::<TaskList>(
-                &cwd.join("shared/tasks.toml"),
-            ).unwrap_or_default();
+            let tasks = crate::safe_read_toml::<TaskList>(&cwd.join("shared/tasks.toml"))
+                .unwrap_or_default();
 
             // Read node definition
             let def = NodeDefinition::load(&cwd.join("node.toml"))?;
@@ -180,7 +182,9 @@ impl DepGraph {
 
                 // Find provider by declared provides
                 for (prov_name, prov) in &self.nodes {
-                    if prov_name == req_name { continue; }
+                    if prov_name == req_name {
+                        continue;
+                    }
                     if prov.def.provides.declared.iter().any(|d| d == key) {
                         self.existing_edges.push(DepEdge {
                             requester: req_name.clone(),
@@ -197,14 +201,12 @@ impl DepGraph {
 
     /// Detect cycles in the current edge set (§15.6).
     /// Returns the list of nodes in the cycle, or empty if acyclic.
-    #[must_use] 
+    #[must_use]
     pub fn detect_cycles(&self, edges: &[DepEdge]) -> Vec<String> {
         // Build adjacency list
         let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
         for edge in edges {
-            adj.entry(&edge.requester)
-                .or_default()
-                .push(&edge.provider);
+            adj.entry(&edge.requester).or_default().push(&edge.provider);
         }
 
         let mut visited = HashSet::new();
@@ -213,9 +215,10 @@ impl DepGraph {
 
         for node in adj.keys() {
             if !visited.contains(node)
-                && self.dfs_cycle(node, &adj, &mut visited, &mut in_stack, &mut cycle_nodes) {
-                    return cycle_nodes;
-                }
+                && self.dfs_cycle(node, &adj, &mut visited, &mut in_stack, &mut cycle_nodes)
+            {
+                return cycle_nodes;
+            }
         }
 
         cycle_nodes
@@ -239,9 +242,10 @@ impl DepGraph {
                     return true;
                 }
                 if !visited.contains(neighbor)
-                    && self.dfs_cycle(neighbor, adj, visited, in_stack, cycle_nodes) {
-                        return true;
-                    }
+                    && self.dfs_cycle(neighbor, adj, visited, in_stack, cycle_nodes)
+                {
+                    return true;
+                }
             }
         }
 
@@ -302,18 +306,19 @@ impl DepGraph {
 
     /// Pass 5: Second cycle detection including new edges.
     pub fn pass5_second_cycle_check(&mut self, eventbus: &EventBus) -> ForgeResult<bool> {
-        let all_edges: Vec<DepEdge> = self.existing_edges
-            .iter()
-            .chain(self.new_edges.iter())
-            .cloned()
-            .collect();
+        let all_edges: Vec<DepEdge> =
+            self.existing_edges.iter().chain(self.new_edges.iter()).cloned().collect();
 
         let cycle = self.detect_cycles(&all_edges);
         if !cycle.is_empty() {
             eventbus.append(&crate::event::EventEntry::new(
                 "orchestrator",
                 EventType::NewDeadlockPrevented {
-                    new_edges: self.new_edges.iter().map(|e| format!("{}→{}", e.requester, e.provider)).collect(),
+                    new_edges: self
+                        .new_edges
+                        .iter()
+                        .map(|e| format!("{}→{}", e.requester, e.provider))
+                        .collect(),
                 },
             ))?;
             self.cycle_nodes = cycle;
@@ -341,14 +346,20 @@ impl DepGraph {
         let mut wake_events: Vec<(String, String)> = Vec::new();
 
         for edge in &edges {
-            let desc = self.nodes
+            let desc = self
+                .nodes
                 .get(&edge.requester)
                 .and_then(|r| r.needs.needs.get(&edge.key))
                 .map(|e| e.desc.clone())
                 .unwrap_or_default();
 
             let needs_spawn = if let Some(prov) = self.nodes.get(&edge.provider) {
-                tasks_to_write.push((edge.provider.clone(), prov.cwd.to_string_lossy().to_string(), edge.key.clone(), desc));
+                tasks_to_write.push((
+                    edge.provider.clone(),
+                    prov.cwd.to_string_lossy().to_string(),
+                    edge.key.clone(),
+                    desc,
+                ));
 
                 if prov.pid.is_none_or(|p| !crate::spawn::os_probe_pid(p)) {
                     let has_value = prov.provides.provides.contains_key(&edge.key);
@@ -377,10 +388,7 @@ impl DepGraph {
         for (provider, key) in &wake_events {
             eventbus.append(&crate::event::EventEntry::new(
                 "orchestrator",
-                EventType::SpawnWakeFailed {
-                    provider: provider.clone(),
-                    key: key.clone(),
-                },
+                EventType::SpawnWakeFailed { provider: provider.clone(), key: key.clone() },
             ))?;
         }
 
@@ -420,7 +428,13 @@ impl DepGraph {
                                 },
                             );
                             changed = true;
-                            updates.push((req_name.clone(), req.cwd.to_string_lossy().to_string(), key.clone(), prov_name.clone(), entry.seq));
+                            updates.push((
+                                req_name.clone(),
+                                req.cwd.to_string_lossy().to_string(),
+                                key.clone(),
+                                prov_name.clone(),
+                                entry.seq,
+                            ));
                         }
                     }
                 }
@@ -439,10 +453,7 @@ impl DepGraph {
             }
             eventbus.append(&crate::event::EventEntry::new(
                 "orchestrator",
-                EventType::DependencyResolved {
-                    requester: req_name.clone(),
-                    key: key.clone(),
-                },
+                EventType::DependencyResolved { requester: req_name.clone(), key: key.clone() },
             ))?;
         }
 
@@ -498,9 +509,7 @@ impl DepGraph {
                 }
                 eventbus.append(&crate::event::EventEntry::new(
                     req_name.as_str(),
-                    EventType::NodeDead {
-                        reason: "all providers dead".into(),
-                    },
+                    EventType::NodeDead { reason: "all providers dead".into() },
                 ))?;
             }
         }
@@ -511,10 +520,7 @@ impl DepGraph {
     /// Pass 8: Value change detection.
     /// Fix #P1-6: don't pull back to implementing, just inbox notify.
     /// Fix #102: null guard on provides[provider][key].
-    pub fn pass8_value_change_detection(
-        &mut self,
-        eventbus: &EventBus,
-    ) -> ForgeResult<()> {
+    pub fn pass8_value_change_detection(&mut self, eventbus: &EventBus) -> ForgeResult<()> {
         // Collect changes (immutable pass)
         let mut inbox_writes: Vec<(String, String, u64, u64)> = Vec::new(); // (requester, key, old_seq, new_seq)
         let mut resolved_writes: Vec<(String, ResolvedValues)> = Vec::new();
@@ -539,7 +545,12 @@ impl DepGraph {
                                     },
                                 );
                                 changed = true;
-                                inbox_writes.push((req_name.clone(), key.clone(), old_seq, entry.seq));
+                                inbox_writes.push((
+                                    req_name.clone(),
+                                    key.clone(),
+                                    old_seq,
+                                    entry.seq,
+                                ));
                             }
                         }
                     }
@@ -583,10 +594,7 @@ impl DepGraph {
 
             eventbus.append(&crate::event::EventEntry::new(
                 "orchestrator",
-                EventType::ValueChanged {
-                    target: req_name.clone(),
-                    key: key.clone(),
-                },
+                EventType::ValueChanged { target: req_name.clone(), key: key.clone() },
             ))?;
         }
 
@@ -612,8 +620,13 @@ impl DepGraph {
                                 // Write task to provider
                                 let mut tasks = crate::safe_read_toml::<TaskList>(
                                     &cwd.join("shared/tasks.toml"),
-                                ).unwrap_or_default();
-                                tasks.add_if_absent(&entry.key, &format!("cross-layer need from {}", entry.requester), &entry.requester);
+                                )
+                                .unwrap_or_default();
+                                tasks.add_if_absent(
+                                    &entry.key,
+                                    &format!("cross-layer need from {}", entry.requester),
+                                    &entry.requester,
+                                );
                                 let _ = tasks.save(&cwd.join("shared/tasks.toml"));
 
                                 entry.provider = Some(name.clone());
@@ -696,7 +709,7 @@ impl DepGraph {
 
     /// Find a provider for a key in the current graph snapshot.
     /// Fix #68: searches in graph's node snapshot (Pass 1 collection).
-    #[must_use] 
+    #[must_use]
     pub fn find_provider(&self, key: &str) -> Option<String> {
         for (name, node) in &self.nodes {
             if node.def.provides.declared.iter().any(|d| d == key) {
@@ -762,9 +775,7 @@ impl DepGraph {
             }
             eventbus.append(&crate::event::EventEntry::new(
                 name,
-                EventType::NodeDead {
-                    reason: "cycle dependency".into(),
-                },
+                EventType::NodeDead { reason: "cycle dependency".into() },
             ))?;
         }
         Ok(())
@@ -776,7 +787,6 @@ impl DepGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     fn setup_test_nodes(dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
         let a_dir = dir.join("mod-a");
@@ -874,20 +884,36 @@ mod tests {
         write_node_def(&b_dir, "mod-b", &["APB1_CLK", "UART_TX"]);
 
         let mut graph = DepGraph::new();
-        graph.nodes.insert("mod-a".into(), NodeSnapshot {
-            name: "mod-a".into(), cwd: a_dir, status: NodeStatus::Blocked, state_seq: 1,
-            needs: NeedsDeclaration::default(), provides: ProvidesDeclaration::default(),
-            resolved: ResolvedValues::default(), tasks: TaskList::default(),
-            def: NodeDefinition::load(&dir.path().join("mod-a/node.toml")).unwrap(),
-            pid: None,
-        });
-        graph.nodes.insert("mod-b".into(), NodeSnapshot {
-            name: "mod-b".into(), cwd: b_dir, status: NodeStatus::Implementing, state_seq: 1,
-            needs: NeedsDeclaration::default(), provides: ProvidesDeclaration::default(),
-            resolved: ResolvedValues::default(), tasks: TaskList::default(),
-            def: NodeDefinition::load(&dir.path().join("mod-b/node.toml")).unwrap(),
-            pid: None,
-        });
+        graph.nodes.insert(
+            "mod-a".into(),
+            NodeSnapshot {
+                name: "mod-a".into(),
+                cwd: a_dir,
+                status: NodeStatus::Blocked,
+                state_seq: 1,
+                needs: NeedsDeclaration::default(),
+                provides: ProvidesDeclaration::default(),
+                resolved: ResolvedValues::default(),
+                tasks: TaskList::default(),
+                def: NodeDefinition::load(&dir.path().join("mod-a/node.toml")).unwrap(),
+                pid: None,
+            },
+        );
+        graph.nodes.insert(
+            "mod-b".into(),
+            NodeSnapshot {
+                name: "mod-b".into(),
+                cwd: b_dir,
+                status: NodeStatus::Implementing,
+                state_seq: 1,
+                needs: NeedsDeclaration::default(),
+                provides: ProvidesDeclaration::default(),
+                resolved: ResolvedValues::default(),
+                tasks: TaskList::default(),
+                def: NodeDefinition::load(&dir.path().join("mod-b/node.toml")).unwrap(),
+                pid: None,
+            },
+        );
 
         assert_eq!(graph.find_provider("APB1_CLK"), Some("mod-b".into()));
         assert_eq!(graph.find_provider("NONEXISTENT"), None);
@@ -913,13 +939,21 @@ mod tests {
         write_node_state(&a_dir, "blocked", 1);
 
         let mut graph = DepGraph::new();
-        graph.nodes.insert("mod-a".into(), NodeSnapshot {
-            name: "mod-a".into(), cwd: a_dir.clone(), status: NodeStatus::Blocked, state_seq: 1,
-            needs: NeedsDeclaration::default(), provides: ProvidesDeclaration::default(),
-            resolved: ResolvedValues::default(), tasks: TaskList::default(),
-            def: NodeDefinition::load(&a_dir.join("node.toml")).unwrap(),
-            pid: None,
-        });
+        graph.nodes.insert(
+            "mod-a".into(),
+            NodeSnapshot {
+                name: "mod-a".into(),
+                cwd: a_dir.clone(),
+                status: NodeStatus::Blocked,
+                state_seq: 1,
+                needs: NeedsDeclaration::default(),
+                provides: ProvidesDeclaration::default(),
+                resolved: ResolvedValues::default(),
+                tasks: TaskList::default(),
+                def: NodeDefinition::load(&a_dir.join("node.toml")).unwrap(),
+                pid: None,
+            },
+        );
 
         let eventbus = EventBus::open(dir.path().join("eventbus.log"));
         graph.escalate_to_parent(dir.path(), "mod-a", "UART_TX_PIN", &eventbus).unwrap();
@@ -938,13 +972,21 @@ mod tests {
         write_node_state(&a_dir, "blocked", 1);
 
         let mut graph = DepGraph::new();
-        graph.nodes.insert("mod-a".into(), NodeSnapshot {
-            name: "mod-a".into(), cwd: a_dir.clone(), status: NodeStatus::Blocked, state_seq: 1,
-            needs: NeedsDeclaration::default(), provides: ProvidesDeclaration::default(),
-            resolved: ResolvedValues::default(), tasks: TaskList::default(),
-            def: NodeDefinition::load(&a_dir.join("node.toml")).unwrap(),
-            pid: None,
-        });
+        graph.nodes.insert(
+            "mod-a".into(),
+            NodeSnapshot {
+                name: "mod-a".into(),
+                cwd: a_dir.clone(),
+                status: NodeStatus::Blocked,
+                state_seq: 1,
+                needs: NeedsDeclaration::default(),
+                provides: ProvidesDeclaration::default(),
+                resolved: ResolvedValues::default(),
+                tasks: TaskList::default(),
+                def: NodeDefinition::load(&a_dir.join("node.toml")).unwrap(),
+                pid: None,
+            },
+        );
 
         let eventbus = EventBus::open(dir.path().join("eventbus.log"));
 

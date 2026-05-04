@@ -17,7 +17,7 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<(), std::io::Error> {
 }
 
 /// Tolerantly read and parse a TOML file. Returns `None` on any error.
-#[must_use] 
+#[must_use]
 pub fn safe_read_toml<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
     let s = fs::read_to_string(path).ok()?;
     toml::from_str(&s).ok()
@@ -26,7 +26,6 @@ pub fn safe_read_toml<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_atomic_write_and_read() {

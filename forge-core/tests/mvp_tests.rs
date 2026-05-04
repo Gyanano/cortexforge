@@ -5,18 +5,18 @@
 
 use std::path::PathBuf;
 
-use forge_core::config::{ForgeConfig, ForgeSection, BudgetSection, PathsSection};
+use forge_core::config::{BudgetSection, ForgeConfig, ForgeSection, PathsSection};
 use forge_core::deps::DepGraph;
 use forge_core::event::EventType;
 use forge_core::eventbus::EventBus;
+use forge_core::heartbeat::HeartbeatMonitor;
 use forge_core::protocol::{
-    NeedsDeclaration, NeedEntry, NodeDefinition, NodeDefSection, NodeState,
-    ChildrenSection, NodeProvidesSection, NodeBudgetSection, NodeRuntimeSection,
-    ProvidesDeclaration, ProvideEntry, ResolvedValues,
+    ChildrenSection, NeedEntry, NeedsDeclaration, NodeBudgetSection, NodeDefSection,
+    NodeDefinition, NodeProvidesSection, NodeRuntimeSection, NodeState, ProvideEntry,
+    ProvidesDeclaration, ResolvedValues,
 };
 use forge_core::spawn::{self, ProcessManager};
 use forge_core::types::NodeRole;
-use forge_core::heartbeat::HeartbeatMonitor;
 
 // ─── Test helpers ──────────────────────────────────────────────────────
 
@@ -26,8 +26,8 @@ fn test_config() -> ForgeConfig {
             schema_version: 1,
             max_depth: 4,
             max_total_nodes: 64,
-            heartbeat_interval_sec: 1,  // fast for tests
-            heartbeat_timeout_sec: 3,    // fast timeout
+            heartbeat_interval_sec: 1, // fast for tests
+            heartbeat_timeout_sec: 3,  // fast timeout
             default_max_retries: 2,
             stuck_threshold_heartbeats: 3,
             scan_interval_sec: 1,
@@ -38,7 +38,15 @@ fn test_config() -> ForgeConfig {
     }
 }
 
-fn make_node_def(name: &str, role: NodeRole, cwd_rel: &str, parent: &str, depth: u32, provides: &[&str], children: &[&str]) -> NodeDefinition {
+fn make_node_def(
+    name: &str,
+    role: NodeRole,
+    cwd_rel: &str,
+    parent: &str,
+    depth: u32,
+    provides: &[&str],
+    children: &[&str],
+) -> NodeDefinition {
     NodeDefinition {
         node: NodeDefSection {
             name: name.into(),
@@ -99,7 +107,15 @@ fn mvp1_three_layer_spawn() {
     let l1_dir = root.join("modules/firmware");
     std::fs::create_dir_all(l1_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(l1_dir.join("shared")).unwrap();
-    let l1_def = make_node_def("domain-firmware", NodeRole::Domain, "modules/firmware", "", 1, &[], &["hal-clock", "bsp-uart"]);
+    let l1_def = make_node_def(
+        "domain-firmware",
+        NodeRole::Domain,
+        "modules/firmware",
+        "",
+        1,
+        &[],
+        &["hal-clock", "bsp-uart"],
+    );
     l1_def.save(&l1_dir.join("node.toml")).unwrap();
     write_node_state(&l1_dir, "idle", 0, "booted");
     spawn::write_pid_file(&l1_dir, std::process::id(), "domain-firmware").unwrap();
@@ -108,7 +124,15 @@ fn mvp1_three_layer_spawn() {
     let l2a_dir = root.join("modules/firmware/submodules/hal-clock");
     std::fs::create_dir_all(l2a_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(l2a_dir.join("shared")).unwrap();
-    let l2a_def = make_node_def("hal-clock", NodeRole::Module, "modules/firmware/submodules/hal-clock", "domain-firmware", 2, &["APB1_CLK"], &[]);
+    let l2a_def = make_node_def(
+        "hal-clock",
+        NodeRole::Module,
+        "modules/firmware/submodules/hal-clock",
+        "domain-firmware",
+        2,
+        &["APB1_CLK"],
+        &[],
+    );
     l2a_def.save(&l2a_dir.join("node.toml")).unwrap();
     write_node_state(&l2a_dir, "idle", 0, "booted");
     spawn::write_pid_file(&l2a_dir, std::process::id(), "hal-clock").unwrap();
@@ -117,13 +141,23 @@ fn mvp1_three_layer_spawn() {
     let l2b_dir = root.join("modules/firmware/submodules/bsp-uart");
     std::fs::create_dir_all(l2b_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(l2b_dir.join("shared")).unwrap();
-    let l2b_def = make_node_def("bsp-uart", NodeRole::Module, "modules/firmware/submodules/bsp-uart", "domain-firmware", 2, &["UART_TX_PIN"], &[]);
+    let l2b_def = make_node_def(
+        "bsp-uart",
+        NodeRole::Module,
+        "modules/firmware/submodules/bsp-uart",
+        "domain-firmware",
+        2,
+        &["UART_TX_PIN"],
+        &[],
+    );
     l2b_def.save(&l2b_dir.join("node.toml")).unwrap();
     write_node_state(&l2b_dir, "idle", 0, "booted");
     spawn::write_pid_file(&l2b_dir, std::process::id(), "bsp-uart").unwrap();
 
     // Verify: all 3 nodes exist with valid node.toml + state.toml + PID
-    for (cwd, name) in &[(&l1_dir, "domain-firmware"), (&l2a_dir, "hal-clock"), (&l2b_dir, "bsp-uart")] {
+    for (cwd, name) in
+        &[(&l1_dir, "domain-firmware"), (&l2a_dir, "hal-clock"), (&l2b_dir, "bsp-uart")]
+    {
         assert!(cwd.join("node.toml").exists(), "missing node.toml for {name}");
         assert!(cwd.join(".forge/state.toml").exists(), "missing state.toml for {name}");
         assert!(cwd.join(".forge/pid").exists(), "missing pid for {name}");
@@ -164,7 +198,8 @@ fn mvp2_recursive_symmetry() {
     // The function doesn't differentiate between L0→L1 and L1→L2
     // (actual spawn requires a running claude, so we just verify the pre-checks)
     let result = spawn::spawn_child(
-        &config, &mut pm,
+        &config,
+        &mut pm,
         forge_core::types::NodeDepth(1),
         &l2_def,
         &l2_dir.join("node.toml"),
@@ -208,7 +243,8 @@ fn mvp3_heartbeat_timeout_detection() {
     let result = monitor.scan_node("node-x", true).unwrap();
     assert!(
         matches!(result.action, forge_core::heartbeat::ScanAction::HeartbeatTimeout { .. }),
-        "expected HeartbeatTimeout, got {:?}", result.action
+        "expected HeartbeatTimeout, got {:?}",
+        result.action
     );
 }
 
@@ -229,10 +265,10 @@ fn mvp4_dependency_discovery_and_resolution() {
 
     // Write needs
     let mut needs = NeedsDeclaration::default();
-    needs.needs.insert("APB1_CLK".into(), NeedEntry {
-        desc: "APB1 bus clock".into(),
-        requester: "mod-a".into(),
-    });
+    needs.needs.insert(
+        "APB1_CLK".into(),
+        NeedEntry { desc: "APB1 bus clock".into(), requester: "mod-a".into() },
+    );
     needs.save(&a_dir.join("shared/needs.toml")).unwrap();
 
     // Provider: mod-b provides APB1_CLK
@@ -246,11 +282,10 @@ fn mvp4_dependency_discovery_and_resolution() {
 
     // Write provides
     let mut provides = ProvidesDeclaration::default();
-    provides.provides.insert("APB1_CLK".into(), ProvideEntry {
-        value: "42000000".into(),
-        desc: "APB1 bus clock".into(),
-        seq: 1,
-    });
+    provides.provides.insert(
+        "APB1_CLK".into(),
+        ProvideEntry { value: "42000000".into(), desc: "APB1 bus clock".into(), seq: 1 },
+    );
     provides.save(&b_dir.join("shared/provides.toml")).unwrap();
 
     // Run dependency resolution
@@ -282,24 +317,32 @@ fn mvp5_cycle_detection() {
     let a_dir = root.join("mod-a");
     std::fs::create_dir_all(a_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(a_dir.join("shared")).unwrap();
-    make_node_def("mod-a", NodeRole::Module, "mod-a", "", 2, &["Y"], &[]).save(&a_dir.join("node.toml")).unwrap();
+    make_node_def("mod-a", NodeRole::Module, "mod-a", "", 2, &["Y"], &[])
+        .save(&a_dir.join("node.toml"))
+        .unwrap();
     write_node_state(&a_dir, "blocked", 1, "needs X");
     spawn::write_pid_file(&a_dir, std::process::id(), "mod-a").unwrap();
 
     let mut needs_a = NeedsDeclaration::default();
-    needs_a.needs.insert("X".into(), NeedEntry { desc: "needs X".into(), requester: "mod-a".into() });
+    needs_a
+        .needs
+        .insert("X".into(), NeedEntry { desc: "needs X".into(), requester: "mod-a".into() });
     needs_a.save(&a_dir.join("shared/needs.toml")).unwrap();
 
     // mod-b needs Y from mod-a
     let b_dir = root.join("mod-b");
     std::fs::create_dir_all(b_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(b_dir.join("shared")).unwrap();
-    make_node_def("mod-b", NodeRole::Module, "mod-b", "", 2, &["X"], &[]).save(&b_dir.join("node.toml")).unwrap();
+    make_node_def("mod-b", NodeRole::Module, "mod-b", "", 2, &["X"], &[])
+        .save(&b_dir.join("node.toml"))
+        .unwrap();
     write_node_state(&b_dir, "blocked", 1, "needs Y");
     spawn::write_pid_file(&b_dir, std::process::id(), "mod-b").unwrap();
 
     let mut needs_b = NeedsDeclaration::default();
-    needs_b.needs.insert("Y".into(), NeedEntry { desc: "needs Y".into(), requester: "mod-b".into() });
+    needs_b
+        .needs
+        .insert("Y".into(), NeedEntry { desc: "needs Y".into(), requester: "mod-b".into() });
     needs_b.save(&b_dir.join("shared/needs.toml")).unwrap();
 
     // Build graph and detect cycle
@@ -317,7 +360,7 @@ fn mvp5_cycle_detection() {
 
 #[test]
 fn mvp6_dead_branch_propagation() {
-    use forge_core::heartbeat::{decide_propagation, PropagationDecision};
+    use forge_core::heartbeat::{PropagationDecision, decide_propagation};
 
     // Optional child → degrade
     assert_eq!(decide_propagation(true, false), PropagationDecision::DegradeToPartial);
@@ -350,7 +393,8 @@ fn mvp7_crash_recovery_pid_rebuild() {
     // Create a node with a PID file pointing to a dead PID
     let dead_dir = root.join("modules/dead-node");
     std::fs::create_dir_all(dead_dir.join(".forge")).unwrap();
-    let dead_def = make_node_def("dead-node", NodeRole::Module, "modules/dead-node", "", 2, &[], &[]);
+    let dead_def =
+        make_node_def("dead-node", NodeRole::Module, "modules/dead-node", "", 2, &[], &[]);
     dead_def.save(&dead_dir.join("node.toml")).unwrap();
     spawn::write_pid_file(&dead_dir, 99999, "dead-node").unwrap(); // PID 99999 is unlikely to exist
 
@@ -369,25 +413,39 @@ fn mvp8_event_bus_reconstruction() {
     let bus = EventBus::open(root.join(".forge/eventbus.log"));
 
     // Simulate a full node lifecycle
-    bus.append(&forge_core::event::EventEntry::new("node-x", EventType::State {
-        from: "idle".into(), to: "assigned".into(), seq: 1, depth: 2,
-    })).unwrap();
+    bus.append(&forge_core::event::EventEntry::new(
+        "node-x",
+        EventType::State { from: "idle".into(), to: "assigned".into(), seq: 1, depth: 2 },
+    ))
+    .unwrap();
 
-    bus.append(&forge_core::event::EventEntry::new("node-x", EventType::State {
-        from: "assigned".into(), to: "planning".into(), seq: 2, depth: 2,
-    })).unwrap();
+    bus.append(&forge_core::event::EventEntry::new(
+        "node-x",
+        EventType::State { from: "assigned".into(), to: "planning".into(), seq: 2, depth: 2 },
+    ))
+    .unwrap();
 
-    bus.append(&forge_core::event::EventEntry::new("node-x", EventType::DependencyDiscovered {
-        key: "APB1_CLK".into(), from: "implementing".into(), to: "blocked".into(),
-    })).unwrap();
+    bus.append(&forge_core::event::EventEntry::new(
+        "node-x",
+        EventType::DependencyDiscovered {
+            key: "APB1_CLK".into(),
+            from: "implementing".into(),
+            to: "blocked".into(),
+        },
+    ))
+    .unwrap();
 
-    bus.append(&forge_core::event::EventEntry::new("orchestrator", EventType::DependencyResolved {
-        requester: "node-x".into(), key: "APB1_CLK".into(),
-    })).unwrap();
+    bus.append(&forge_core::event::EventEntry::new(
+        "orchestrator",
+        EventType::DependencyResolved { requester: "node-x".into(), key: "APB1_CLK".into() },
+    ))
+    .unwrap();
 
-    bus.append(&forge_core::event::EventEntry::new("node-x", EventType::State {
-        from: "verifying".into(), to: "delivered".into(), seq: 5, depth: 2,
-    })).unwrap();
+    bus.append(&forge_core::event::EventEntry::new(
+        "node-x",
+        EventType::State { from: "verifying".into(), to: "delivered".into(), seq: 5, depth: 2 },
+    ))
+    .unwrap();
 
     // Reconstruct node lifecycle
     let replay = bus.replay_node("node-x").unwrap();
@@ -415,7 +473,8 @@ fn integration_deps_full_cycle() {
     std::fs::create_dir_all(a_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(a_dir.join("shared")).unwrap();
     make_node_def("mod-a", NodeRole::Module, "mod-a", "", 2, &[], &[])
-        .save(&a_dir.join("node.toml")).unwrap();
+        .save(&a_dir.join("node.toml"))
+        .unwrap();
     write_node_state(&a_dir, "blocked", 1, "waiting X");
     spawn::write_pid_file(&a_dir, std::process::id(), "mod-a").unwrap();
 
@@ -427,12 +486,15 @@ fn integration_deps_full_cycle() {
     std::fs::create_dir_all(b_dir.join(".forge")).unwrap();
     std::fs::create_dir_all(b_dir.join("shared")).unwrap();
     make_node_def("mod-b", NodeRole::Module, "mod-b", "", 2, &["X"], &[])
-        .save(&b_dir.join("node.toml")).unwrap();
+        .save(&b_dir.join("node.toml"))
+        .unwrap();
     write_node_state(&b_dir, "implementing", 1, "ready");
     spawn::write_pid_file(&b_dir, std::process::id(), "mod-b").unwrap();
 
     let mut provides = ProvidesDeclaration::default();
-    provides.provides.insert("X".into(), ProvideEntry { value: "42".into(), desc: "X value".into(), seq: 1 });
+    provides
+        .provides
+        .insert("X".into(), ProvideEntry { value: "42".into(), desc: "X value".into(), seq: 1 });
     provides.save(&b_dir.join("shared/provides.toml")).unwrap();
 
     // Full dependency resolution cycle

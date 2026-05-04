@@ -50,11 +50,7 @@ impl ArtifactsManifest {
                 let hash = format!("{:x}", hasher.finalize());
                 let size = content.len() as u64;
 
-                files.push(ArtifactEntry {
-                    path: entry,
-                    sha256: hash,
-                    size_bytes: size,
-                });
+                files.push(ArtifactEntry { path: entry, sha256: hash, size_bytes: size });
             }
         }
 
@@ -78,8 +74,9 @@ impl ArtifactsManifest {
     /// Load from `artifacts.toml`.
     pub fn load(path: &Path) -> ForgeResult<Self> {
         let content = std::fs::read_to_string(path)?;
-        let manifest: Self = toml::from_str(&content)
-            .map_err(|e| crate::error::ForgeError::Config(format!("invalid artifacts.toml: {e}")))?;
+        let manifest: Self = toml::from_str(&content).map_err(|e| {
+            crate::error::ForgeError::Config(format!("invalid artifacts.toml: {e}"))
+        })?;
         Ok(manifest)
     }
 
@@ -138,8 +135,10 @@ pub fn create_deliverables_dir(cwd: &Path, version: &str) -> ForgeResult<PathBuf
 pub fn write_changelog(deliverables_dir: &Path, entries: &[&str]) -> ForgeResult<()> {
     let changelog_path = deliverables_dir.join("CHANGELOG.md");
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
-    let mut content = format!("# Changelog — v{}\n\nGenerated: {now}\n\n",
-        deliverables_dir.file_name().unwrap_or_default().to_string_lossy());
+    let mut content = format!(
+        "# Changelog — v{}\n\nGenerated: {now}\n\n",
+        deliverables_dir.file_name().unwrap_or_default().to_string_lossy()
+    );
     for entry in entries {
         content.push_str(&format!("- {entry}\n"));
     }
@@ -152,7 +151,7 @@ pub fn write_changelog(deliverables_dir: &Path, entries: &[&str]) -> ForgeResult
 /// Check for TOCTOU mismatch between artifacts and current state.
 ///
 /// Returns true if the artifacts match the expected state sequence.
-#[must_use] 
+#[must_use]
 pub const fn check_toc_tou(manifest: &ArtifactsManifest, current_state_seq: u64) -> bool {
     manifest.state_sequence == current_state_seq
 }
@@ -163,23 +162,17 @@ pub const fn check_toc_tou(manifest: &ArtifactsManifest, current_state_seq: u64)
 const ROLE_ORDER: &[&str] = &["hal", "bsp", "mw", "app", "drv", "test", "tools"];
 
 /// Get the integration priority for a role. Lower = earlier in integration.
-#[must_use] 
+#[must_use]
 pub fn integration_priority(role: &str) -> usize {
-    ROLE_ORDER
-        .iter()
-        .position(|r| *r == role)
-        .unwrap_or(usize::MAX)
+    ROLE_ORDER.iter().position(|r| *r == role).unwrap_or(usize::MAX)
 }
 
 /// Topologically sort nodes by role for integration ordering.
-#[must_use] 
-pub fn sort_by_integration_order(
-    nodes: &[(String, String)], // (name, role)
+#[must_use]
+pub fn sort_by_integration_order(nodes: &[(String, String)], // (name, role)
 ) -> Vec<String> {
-    let mut with_prio: Vec<_> = nodes
-        .iter()
-        .map(|(name, role)| (integration_priority(role), name.clone()))
-        .collect();
+    let mut with_prio: Vec<_> =
+        nodes.iter().map(|(name, role)| (integration_priority(role), name.clone())).collect();
     with_prio.sort_by_key(|(prio, _)| *prio);
     with_prio.into_iter().map(|(_, name)| name).collect()
 }

@@ -51,7 +51,7 @@ impl NodeName {
         Self(name.into())
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -70,12 +70,12 @@ pub struct NodeDepth(pub u32);
 impl NodeDepth {
     pub const ROOT: Self = Self(0);
 
-    #[must_use] 
+    #[must_use]
     pub const fn as_u32(&self) -> u32 {
         self.0
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn child_depth(&self) -> Self {
         Self(self.0 + 1)
     }
@@ -96,7 +96,7 @@ impl NodePath {
         Self(path.into())
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -117,12 +117,12 @@ pub struct Seq(pub u64);
 impl Seq {
     pub const ZERO: Self = Self(0);
 
-    #[must_use] 
+    #[must_use]
     pub const fn next(&self) -> Self {
         Self(self.0 + 1)
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn as_u64(&self) -> u64 {
         self.0
     }
@@ -143,7 +143,7 @@ impl DependencyKey {
         Self(key.into())
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -182,27 +182,22 @@ pub struct BudgetTracker {
 }
 
 impl BudgetTracker {
-    #[must_use] 
+    #[must_use]
     pub fn new(max_tokens: Option<u64>, max_wallclock_sec: Option<u64>) -> Self {
-        Self {
-            max_tokens,
-            max_wallclock_sec,
-            ..Default::default()
-        }
+        Self { max_tokens, max_wallclock_sec, ..Default::default() }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn tokens_exhausted(&self) -> bool {
         self.max_tokens.is_some_and(|max| self.tokens_used >= max)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn wallclock_exhausted(&self) -> bool {
-        self.max_wallclock_sec
-            .is_some_and(|max| self.wallclock_sec_used >= max)
+        self.max_wallclock_sec.is_some_and(|max| self.wallclock_sec_used >= max)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_exhausted(&self) -> bool {
         self.tokens_exhausted() || self.wallclock_exhausted()
     }

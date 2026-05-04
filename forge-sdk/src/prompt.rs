@@ -4,7 +4,7 @@
 //! for Domain Agents vs Module Agents.
 
 /// Build a first-start prompt (§7.1).
-#[must_use] 
+#[must_use]
 #[allow(clippy::too_many_arguments)]
 pub fn build_first_prompt(
     name: &str,
@@ -104,7 +104,7 @@ When you can provide an interface another module needs:
 }
 
 /// Build a wake-up prompt (§7.2).
-#[must_use] 
+#[must_use]
 pub fn build_wake_prompt(name: &str) -> String {
     format!(
         r#"You are {name}. You previously delivered successfully and are now re-awakened.
@@ -137,9 +137,16 @@ mod tests {
     #[test]
     fn test_first_prompt_module() {
         let p = build_first_prompt(
-            "mod-bsp-uart", "module", 2, "domain-firmware", "modules/firmware/submodules/bsp-uart",
-            15, 200_000, 1800,
-            &[], &["APB1_CLK".into(), "UART_TX_PIN".into()],
+            "mod-bsp-uart",
+            "module",
+            2,
+            "domain-firmware",
+            "modules/firmware/submodules/bsp-uart",
+            15,
+            200_000,
+            1800,
+            &[],
+            &["APB1_CLK".into(), "UART_TX_PIN".into()],
         );
         assert!(p.contains("mod-bsp-uart"));
         assert!(p.contains("module"));
@@ -155,8 +162,14 @@ mod tests {
     #[test]
     fn test_first_prompt_domain() {
         let p = build_first_prompt(
-            "domain-firmware", "domain", 1, "", "modules/firmware",
-            15, 300_000, 3600,
+            "domain-firmware",
+            "domain",
+            1,
+            "",
+            "modules/firmware",
+            15,
+            300_000,
+            3600,
             &["hal-clock".into(), "bsp-uart".into()],
             &[],
         );

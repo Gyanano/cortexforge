@@ -4,20 +4,20 @@
 //! state machine engine, and dependency resolution logic for the
 //! N-level recursive agent orchestration tree.
 
-pub mod types;
-pub mod error;
+pub mod budget;
 pub mod config;
-pub mod protocol;
-pub mod state;
+pub mod deliverables;
+pub mod deps;
+pub mod error;
 pub mod event;
 pub mod eventbus;
-pub mod logging;
-pub mod budget;
-pub mod spawn;
 pub mod heartbeat;
+pub mod logging;
 pub mod permission;
-pub mod deps;
-pub mod deliverables;
+pub mod protocol;
+pub mod spawn;
+pub mod state;
+pub mod types;
 
 mod atomic;
 pub use atomic::{atomic_write, safe_read_toml};

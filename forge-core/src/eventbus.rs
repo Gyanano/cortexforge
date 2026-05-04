@@ -28,10 +28,7 @@ impl EventBus {
     ///
     /// Uses `O_APPEND` for safe concurrent appends (within OS limits for small writes).
     pub fn append(&self, entry: &EventEntry) -> ForgeResult<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(&self.path)?;
         let line = serde_json::to_string(entry)
             .map_err(|e| crate::error::ForgeError::Other(format!("json serialize: {e}")))?;
         writeln!(file, "{line}")?;
@@ -64,29 +61,17 @@ impl EventBus {
 
     /// Read events filtered by node name.
     pub fn read_by_node(&self, node: &str) -> ForgeResult<Vec<EventEntry>> {
-        Ok(self
-            .read_all()?
-            .into_iter()
-            .filter(|e| e.node == node)
-            .collect())
+        Ok(self.read_all()?.into_iter().filter(|e| e.node == node).collect())
     }
 
     /// Read events filtered by event type name.
     pub fn read_by_event(&self, event_name: &str) -> ForgeResult<Vec<EventEntry>> {
-        Ok(self
-            .read_all()?
-            .into_iter()
-            .filter(|e| e.event.name() == event_name)
-            .collect())
+        Ok(self.read_all()?.into_iter().filter(|e| e.event.name() == event_name).collect())
     }
 
     /// Read events since a given timestamp (RFC 3339).
     pub fn read_since(&self, since: &str) -> ForgeResult<Vec<EventEntry>> {
-        Ok(self
-            .read_all()?
-            .into_iter()
-            .filter(|e| e.ts.to_rfc3339().as_str() >= since)
-            .collect())
+        Ok(self.read_all()?.into_iter().filter(|e| e.ts.to_rfc3339().as_str() >= since).collect())
     }
 
     /// Replay the full lifecycle of a node from the event log.
@@ -105,11 +90,7 @@ mod tests {
     use crate::event::EventType;
 
     fn test_entry(node: &str, ev: EventType) -> EventEntry {
-        EventEntry {
-            ts: chrono::Utc::now().into(),
-            node: node.into(),
-            event: ev,
-        }
+        EventEntry { ts: chrono::Utc::now().into(), node: node.into(), event: ev }
     }
 
     #[test]
@@ -120,23 +101,13 @@ mod tests {
 
         bus.append(&test_entry(
             "node-a",
-            EventType::State {
-                from: "idle".into(),
-                to: "assigned".into(),
-                seq: 1,
-                depth: 2,
-            },
+            EventType::State { from: "idle".into(), to: "assigned".into(), seq: 1, depth: 2 },
         ))
         .unwrap();
 
         bus.append(&test_entry(
             "node-b",
-            EventType::Spawn {
-                child: "mod-c".into(),
-                pid: 1234,
-                depth: 3,
-                wake_up: false,
-            },
+            EventType::Spawn { child: "mod-c".into(), pid: 1234, depth: 3, wake_up: false },
         ))
         .unwrap();
 
@@ -167,20 +138,12 @@ mod tests {
         let path = dir.path().join("eventbus.log");
         let bus = EventBus::open(&path);
 
-        bus.append(&test_entry(
-            "n1",
-            EventType::Deadlock {
-                cycle: vec!["a".into(), "b".into()],
-            },
-        ))
-        .unwrap();
+        bus.append(&test_entry("n1", EventType::Deadlock { cycle: vec!["a".into(), "b".into()] }))
+            .unwrap();
 
         bus.append(&test_entry(
             "n2",
-            EventType::SpawnWakeFailed {
-                provider: "p".into(),
-                key: "k".into(),
-            },
+            EventType::SpawnWakeFailed { provider: "p".into(), key: "k".into() },
         ))
         .unwrap();
 

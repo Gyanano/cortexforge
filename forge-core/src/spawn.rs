@@ -37,7 +37,7 @@ impl ChildHandle {
     pub fn is_alive(&mut self) -> bool {
         if let Some(ref mut child) = self.child {
             match child.try_wait() {
-                Ok(None) => return true,  // still running
+                Ok(None) => return true,     // still running
                 Ok(Some(_)) => return false, // exited
                 Err(_) => return false,
             }
@@ -97,7 +97,7 @@ pub struct ProcessManager {
 }
 
 impl ProcessManager {
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -129,9 +129,7 @@ impl ProcessManager {
 
     /// Check if a named child is alive.
     pub fn is_alive(&mut self, name: &str) -> bool {
-        self.children
-            .get_mut(name)
-            .is_some_and(ChildHandle::is_alive)
+        self.children.get_mut(name).is_some_and(ChildHandle::is_alive)
     }
 
     /// Kill a child by name.
@@ -143,13 +141,13 @@ impl ProcessManager {
     }
 
     /// Count of tracked children.
-    #[must_use] 
+    #[must_use]
     pub fn active_count(&self) -> usize {
         self.children.len()
     }
 
     /// Get all registered child names.
-    #[must_use] 
+    #[must_use]
     pub fn names(&self) -> Vec<&str> {
         self.children.keys().map(std::string::String::as_str).collect()
     }
@@ -218,10 +216,16 @@ pub fn spawn_child(
     let prompt = if is_wake_up {
         build_wake_prompt(&child_def.node.name)
     } else {
-        build_first_prompt(&child_def.node.name, &child_def.node.role.to_string(),
-            child_depth.as_u32(), &child_def.node.parent, &child_def.node.cwd,
-            config.forge.heartbeat_interval_sec, child_def.budget.max_tokens,
-            child_def.budget.max_wallclock_sec)
+        build_first_prompt(
+            &child_def.node.name,
+            &child_def.node.role.to_string(),
+            child_depth.as_u32(),
+            &child_def.node.parent,
+            &child_def.node.cwd,
+            config.forge.heartbeat_interval_sec,
+            child_def.budget.max_tokens,
+            child_def.budget.max_wallclock_sec,
+        )
     };
 
     // ── Step 4: Launch process ──
@@ -238,19 +242,18 @@ pub fn spawn_child(
     let mut cmd = if cfg!(test) || std::env::var("FORGE_MOCK_CLAUDE").is_ok() {
         // Mock: spawn a simple shell that simulates node behavior
         let mut c = Command::new("sh");
-        c.args(["-c", &format!(
-            "echo '{}' > {}/.forge/pid && echo 'pid=$$' && sleep 3600",
-            std::process::id(),
-            child_def.node.cwd
-        )]);
+        c.args([
+            "-c",
+            &format!(
+                "echo '{}' > {}/.forge/pid && echo 'pid=$$' && sleep 3600",
+                std::process::id(),
+                child_def.node.cwd
+            ),
+        ]);
         c
     } else {
         let mut c = Command::new("claude");
-        c.args([
-            "-p", &prompt,
-            "--dangerously-skip-permissions",
-            "--output-format", "json",
-        ]);
+        c.args(["-p", &prompt, "--dangerously-skip-permissions", "--output-format", "json"]);
         c
     };
 
@@ -299,11 +302,7 @@ pub fn spawn_child(
         });
     }
 
-    Ok(Some(SpawnResult {
-        pid,
-        name: child_def.node.name.clone(),
-        depth: child_depth,
-    }))
+    Ok(Some(SpawnResult { pid, name: child_def.node.name.clone(), depth: child_depth }))
 }
 
 // ─── Pre-checks (§5.1 step 1) ──────────────────────────────────────────
@@ -337,11 +336,7 @@ fn pre_checks_pass(
     }
 
     // Budget check (simplified — real impl uses remaining_budget from budget.rs)
-    let layer_budget = config
-        .budget
-        .per_layer
-        .iter()
-        .find(|lb| lb.layer == child_depth.as_u32());
+    let layer_budget = config.budget.per_layer.iter().find(|lb| lb.layer == child_depth.as_u32());
 
     if let Some(lb) = layer_budget {
         if let Some(max_tokens) = lb.tokens {
@@ -497,28 +492,20 @@ pub fn write_pid_file(cwd: &Path, pid: u32, node_name: &str) -> ForgeResult<()> 
 }
 
 /// Read the PID from a node's .forge/pid file.
-#[must_use] 
+#[must_use]
 pub fn read_pid_file(cwd: &Path) -> Option<u32> {
     let pid_path = cwd.join(".forge/pid");
-    fs::read_to_string(&pid_path)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    fs::read_to_string(&pid_path).ok()?.trim().parse().ok()
 }
 
 /// Read all PID info from a node directory.
-#[must_use] 
+#[must_use]
 pub fn read_pid_info(cwd: &Path) -> Option<(u32, String, String)> {
     let pid = read_pid_file(cwd)?;
-    let node_name = fs::read_to_string(cwd.join(".forge/node_name"))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let started_at = fs::read_to_string(cwd.join(".forge/started_at"))
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let node_name =
+        fs::read_to_string(cwd.join(".forge/node_name")).unwrap_or_default().trim().to_string();
+    let started_at =
+        fs::read_to_string(cwd.join(".forge/started_at")).unwrap_or_default().trim().to_string();
     Some((pid, node_name, started_at))
 }
 
@@ -540,9 +527,8 @@ fn wait_for_state_file(path: &Path, timeout: Duration) -> bool {
 ///
 /// Returns true if the process exists (signal delivery possible).
 #[cfg(unix)]
-#[must_use] 
+#[must_use]
 pub fn os_probe_pid(pid: u32) -> bool {
-    
     use nix::unistd::Pid;
     nix::sys::signal::kill(Pid::from_raw(pid as i32), None).is_ok()
 }
@@ -575,10 +561,7 @@ fn os_kill_pid(_pid: u32) -> ForgeResult<()> {
 /// Rebuild the process manager index from `.forge/pid` files on disk.
 ///
 /// Called at Orchestrator startup or after crash recovery (§5.4).
-pub fn rebuild_pids_table(
-    root: &Path,
-    proc_mgr: &mut ProcessManager,
-) -> ForgeResult<usize> {
+pub fn rebuild_pids_table(root: &Path, proc_mgr: &mut ProcessManager) -> ForgeResult<usize> {
     let mut count = 0;
     rebuild_recursive(root, root, proc_mgr, &mut count)?;
     tracing::info!(recovered = count, "rebuilt PID table from disk");
@@ -651,10 +634,8 @@ fn estimate_depth(root: &Path, node_dir: &Path) -> NodeDepth {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ForgeSection, BudgetSection, PathsSection};
-    use crate::protocol::{
-        NodeDefSection, NodeBudgetSection,
-    };
+    use crate::config::{BudgetSection, ForgeSection, PathsSection};
+    use crate::protocol::{NodeBudgetSection, NodeDefSection};
     use crate::types::NodeRole;
 
     fn test_config() -> ForgeConfig {

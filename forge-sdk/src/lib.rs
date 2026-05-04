@@ -4,7 +4,7 @@
 //! orchestration tree: lifecycle management, heartbeat watchdog,
 //! budget tracking, verify-gate execution, and prompt construction.
 
-pub mod runtime;
 pub mod prompt;
+pub mod runtime;
 
 pub use runtime::NodeRuntime;

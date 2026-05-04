@@ -8,11 +8,7 @@ use forge_core::config::ForgeConfig;
 use forge_core::protocol::NodeDefinition;
 
 #[derive(Parser)]
-#[command(
-    name = "forge",
-    about = "CortexForge — MCU embedded agent orchestration",
-    version
-)]
+#[command(name = "forge", about = "CortexForge — MCU embedded agent orchestration", version)]
 struct Cli {
     /// Project root directory
     #[arg(short, long, default_value = ".", env = "FORGE_ROOT")]
@@ -134,7 +130,8 @@ fn main() {
 
 fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeResult<()> {
     let project_name = name.unwrap_or_else(|| {
-        root.file_name().map_or_else(|| "cortexforge-project".into(), |n| n.to_string_lossy().to_string())
+        root.file_name()
+            .map_or_else(|| "cortexforge-project".into(), |n| n.to_string_lossy().to_string())
     });
 
     tracing::info!(name = %project_name, root = %root.display(), "initializing project");
@@ -260,7 +257,12 @@ fn cmd_status(_root: &PathBuf, json: bool) -> forge_core::error::ForgeResult<()>
     Ok(())
 }
 
-fn cmd_kill(_root: &PathBuf, node: &str, force: bool, cascade: bool) -> forge_core::error::ForgeResult<()> {
+fn cmd_kill(
+    _root: &PathBuf,
+    node: &str,
+    force: bool,
+    cascade: bool,
+) -> forge_core::error::ForgeResult<()> {
     println!("Killing node '{node}' (force={force}, cascade={cascade})...");
     println!("(Kill mechanism not yet implemented)");
     Ok(())
@@ -331,9 +333,7 @@ fn cmd_node_show(root: &PathBuf, name: &str) -> forge_core::error::ForgeResult<(
     let nodes = collect_node_defs(root)?;
     let cwd = nodes.iter().find(|(n, _)| n == name).map(|(_, c)| c);
     let Some(cwd) = cwd else {
-        return Err(forge_core::error::ForgeError::Config(format!(
-            "node '{name}' not found"
-        )));
+        return Err(forge_core::error::ForgeError::Config(format!("node '{name}' not found")));
     };
 
     let node_path = root.join(cwd).join("node.toml");
@@ -350,7 +350,10 @@ fn cmd_node_show(root: &PathBuf, name: &str) -> forge_core::error::ForgeResult<(
         let state = NodeState::load(&state_path)?;
         println!("  State: {}", state.state.current);
         println!("  Sequence: {}", state.state.sequence);
-        println!("  Progress: {}% — {}", state.progress.percent_self_estimate, state.progress.summary);
+        println!(
+            "  Progress: {}% — {}",
+            state.progress.percent_self_estimate, state.progress.summary
+        );
     } else {
         println!("  State: (not yet spawned)");
     }
@@ -372,7 +375,6 @@ fn cmd_node_message(_root: &PathBuf, to: &str) -> forge_core::error::ForgeResult
 
 /// Recursively find all node.toml files under the project root.
 fn collect_node_defs(root: &PathBuf) -> forge_core::error::ForgeResult<Vec<(String, String)>> {
-    
     let mut nodes = Vec::new();
     collect_node_defs_recursive(root, root, &mut nodes)?;
     Ok(nodes)

@@ -147,9 +147,7 @@ impl NodeDefinition {
             seen.insert(child, true);
         }
         if self.budget.max_tokens == 0 {
-            return Err(crate::error::ForgeError::Config(
-                "budget.max_tokens must be > 0".into(),
-            ));
+            return Err(crate::error::ForgeError::Config("budget.max_tokens must be > 0".into()));
         }
         Ok(())
     }
@@ -343,9 +341,9 @@ impl InboxMessage {
     pub fn move_to_processed(path: &Path, inbox_dir: &Path) -> ForgeResult<()> {
         let processed_dir = inbox_dir.join("processed");
         std::fs::create_dir_all(&processed_dir)?;
-        let filename = path.file_name().ok_or_else(|| {
-            crate::error::ForgeError::Other("invalid inbox file path".into())
-        })?;
+        let filename = path
+            .file_name()
+            .ok_or_else(|| crate::error::ForgeError::Other("invalid inbox file path".into()))?;
         std::fs::rename(path, processed_dir.join(filename))?;
         Ok(())
     }
@@ -427,13 +425,13 @@ impl ProvidesDeclaration {
     }
 
     /// Check if a specific key exists in the provides declaration.
-    #[must_use] 
+    #[must_use]
     pub fn has(&self, key: &str) -> bool {
         self.provides.contains_key(key)
     }
 
     /// Get the entry for a key.
-    #[must_use] 
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&ProvideEntry> {
         self.provides.get(key)
     }
@@ -470,13 +468,13 @@ impl ResolvedValues {
     }
 
     /// Check if all needed keys are present.
-    #[must_use] 
+    #[must_use]
     pub fn has_all(&self, keys: &[String]) -> bool {
         keys.iter().all(|k| self.resolved.contains_key(k))
     }
 
     /// Check if a specific key exists.
-    #[must_use] 
+    #[must_use]
     pub fn has(&self, key: &str) -> bool {
         self.resolved.contains_key(key)
     }
@@ -525,7 +523,7 @@ impl TaskList {
     }
 
     /// Check if a task already exists (dedup by key + from).
-    #[must_use] 
+    #[must_use]
     pub fn has_task(&self, key: &str, from: &str) -> bool {
         self.tasks.iter().any(|t| t.key == key && t.from == from)
     }
@@ -545,7 +543,7 @@ impl TaskList {
     }
 
     /// Get all pending tasks.
-    #[must_use] 
+    #[must_use]
     pub fn pending(&self) -> Vec<&TaskEntry> {
         self.tasks.iter().filter(|t| t.status == TaskStatus::Pending).collect()
     }
@@ -569,8 +567,9 @@ pub struct SpawnRequestEntry {
 impl SpawnRequests {
     pub fn load(path: &Path) -> ForgeResult<Self> {
         let content = std::fs::read_to_string(path)?;
-        let sr = toml::from_str(&content)
-            .map_err(|e| crate::error::ForgeError::Config(format!("invalid spawn_requests.toml: {e}")))?;
+        let sr = toml::from_str(&content).map_err(|e| {
+            crate::error::ForgeError::Config(format!("invalid spawn_requests.toml: {e}"))
+        })?;
         Ok(sr)
     }
 
@@ -626,8 +625,9 @@ impl EscalatedTable {
         if content.trim().is_empty() {
             return Ok(Self::default());
         }
-        let et = toml::from_str(&content)
-            .map_err(|e| crate::error::ForgeError::Config(format!("invalid escalated.toml: {e}")))?;
+        let et = toml::from_str(&content).map_err(|e| {
+            crate::error::ForgeError::Config(format!("invalid escalated.toml: {e}"))
+        })?;
         Ok(et)
     }
 
@@ -639,7 +639,7 @@ impl EscalatedTable {
     }
 
     /// Check if there's already a non-terminal entry for the same requester+key.
-    #[must_use] 
+    #[must_use]
     pub fn has_pending(&self, key: &str, requester: &str) -> bool {
         self.needs.iter().any(|e| {
             e.key == key
@@ -689,9 +689,7 @@ mod tests {
                 declared: vec!["APB1_CLK".into(), "UART_TX_PIN".into()],
             },
             budget: NodeBudgetSection::default(),
-            runtime: NodeRuntimeSection {
-                model: Some("claude-sonnet-4-6".into()),
-            },
+            runtime: NodeRuntimeSection { model: Some("claude-sonnet-4-6".into()) },
         };
 
         def.save(&path).unwrap();
@@ -770,14 +768,8 @@ mod tests {
                 current_task_id: "T-uart-001".into(),
             },
             children_view: Default::default(),
-            verify: VerifySection {
-                retry_count: 1,
-                ..Default::default()
-            },
-            budget_used: BudgetUsedSection {
-                tokens_used: 87400,
-                wallclock_sec_used: 320,
-            },
+            verify: VerifySection { retry_count: 1, ..Default::default() },
+            budget_used: BudgetUsedSection { tokens_used: 87400, wallclock_sec_used: 320 },
         };
 
         state.save(&path).unwrap();
@@ -890,10 +882,7 @@ mod tests {
         let loaded = NeedsDeclaration::load(&path).unwrap();
         assert_eq!(loaded.needs.len(), 2);
         assert!(loaded.needs.contains_key("APB1_CLK"));
-        assert_eq!(
-            loaded.needs["APB1_CLK"].requester,
-            "modules/firmware/submodules/bsp-uart"
-        );
+        assert_eq!(loaded.needs["APB1_CLK"].requester, "modules/firmware/submodules/bsp-uart");
     }
 
     #[test]
@@ -904,11 +893,7 @@ mod tests {
         let mut provides = ProvidesDeclaration::default();
         provides.provides.insert(
             "APB1_CLK".into(),
-            ProvideEntry {
-                value: "42000000".into(),
-                desc: "APB1 bus clock".into(),
-                seq: 2,
-            },
+            ProvideEntry { value: "42000000".into(), desc: "APB1 bus clock".into(), seq: 2 },
         );
 
         provides.save(&path).unwrap();
@@ -928,11 +913,7 @@ mod tests {
         let mut resolved = ResolvedValues::default();
         resolved.resolved.insert(
             "APB1_CLK".into(),
-            ResolvedEntry {
-                value: "42000000".into(),
-                from: "hal-clock".into(),
-                seq: 1,
-            },
+            ResolvedEntry { value: "42000000".into(), from: "hal-clock".into(), seq: 1 },
         );
         resolved.save(&path).unwrap();
 
@@ -940,11 +921,7 @@ mod tests {
         let mut loaded = ResolvedValues::load(&path).unwrap();
         loaded.resolved.insert(
             "APB2_CLK".into(),
-            ResolvedEntry {
-                value: "84000000".into(),
-                from: "hal-clock".into(),
-                seq: 1,
-            },
+            ResolvedEntry { value: "84000000".into(), from: "hal-clock".into(), seq: 1 },
         );
         loaded.save(&path).unwrap();
 
