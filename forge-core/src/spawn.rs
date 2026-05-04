@@ -18,6 +18,7 @@ use crate::types::{NodeDepth, NodeName};
 
 /// A handle to a spawned child process.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ChildHandle {
     pub name: NodeName,
     pub pid: u32,
