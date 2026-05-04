@@ -314,7 +314,7 @@ pub fn check_wallclock_exhausted(
 mod tests {
     use super::*;
     use crate::protocol::{
-        BudgetUsedSection, ChildrenViewSection, ProgressSection, StateSection, VerifySection,
+        ProgressSection, StateSection,
     };
 
     fn write_test_state(dir: &Path, current: &str, summary: &str, seq: u64) {

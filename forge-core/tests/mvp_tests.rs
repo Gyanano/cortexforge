@@ -4,25 +4,19 @@
 //! Set `FORGE_MOCK_CLAUDE=1` to use shell-based mock nodes (default for tests).
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use forge_core::config::{ForgeConfig, ForgeSection, BudgetSection, PathsSection};
 use forge_core::deps::DepGraph;
-use forge_core::error::ForgeResult;
 use forge_core::event::EventType;
 use forge_core::eventbus::EventBus;
 use forge_core::protocol::{
     NeedsDeclaration, NeedEntry, NodeDefinition, NodeDefSection, NodeState,
     ChildrenSection, NodeProvidesSection, NodeBudgetSection, NodeRuntimeSection,
-    ProvidesDeclaration, ProvideEntry, ResolvedEntry, ResolvedValues, TaskList,
-    SpawnRequests, SpawnRequestEntry, EscalatedTable, EscalatedNeed, EscalatedStatus,
-    InboxMessage, MessageKind, MessageBody,
+    ProvidesDeclaration, ProvideEntry, ResolvedValues,
 };
-use forge_core::state::{NodeStatus, StateMachine};
 use forge_core::spawn::{self, ProcessManager};
 use forge_core::types::NodeRole;
 use forge_core::heartbeat::HeartbeatMonitor;
-use forge_core::deliverables::ArtifactsManifest;
 
 // ─── Test helpers ──────────────────────────────────────────────────────
 

@@ -706,7 +706,7 @@ mod tests {
     fn test_node_definition_validate_empty_name() {
         let dir = test_dir();
         let path = dir.path().join("node.toml");
-        let mut def = NodeDefinition {
+        let def = NodeDefinition {
             node: NodeDefSection {
                 name: "".into(),
                 role: NodeRole::Module,
@@ -727,7 +727,7 @@ mod tests {
 
     #[test]
     fn test_node_definition_duplicate_children() {
-        let mut def = NodeDefinition {
+        let def = NodeDefinition {
             node: NodeDefSection {
                 name: "test".into(),
                 role: NodeRole::Domain,
@@ -1003,7 +1003,7 @@ mod tests {
         let dir = test_dir();
         let path = dir.path().join("escalated.toml");
 
-        let mut table = EscalatedTable {
+        let table = EscalatedTable {
             needs: vec![EscalatedNeed {
                 key: "UART_TX_PIN".into(),
                 requester: "tools/flasher".into(),

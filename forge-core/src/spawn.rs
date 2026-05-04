@@ -650,9 +650,9 @@ fn estimate_depth(root: &Path, node_dir: &Path) -> NodeDepth {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ForgeSection, BudgetSection, GlobalBudget, PathsSection};
+    use crate::config::{ForgeSection, BudgetSection, PathsSection};
     use crate::protocol::{
-        NodeDefSection, ChildrenSection, NodeProvidesSection, NodeBudgetSection, NodeRuntimeSection,
+        NodeDefSection, NodeBudgetSection,
     };
     use crate::types::NodeRole;
 
@@ -696,7 +696,7 @@ mod tests {
             forge: ForgeSection { max_depth: 2, ..test_config().forge },
             ..test_config()
         };
-        let mut pm = ProcessManager::new();
+        let pm = ProcessManager::new();
         let def = test_node_def("deep-node", "modules/deep");
         // parent depth 2 → child depth 3 > max_depth 2
         let result = pre_checks_pass(&config, &pm, NodeDepth(3), &def).unwrap();
@@ -706,7 +706,7 @@ mod tests {
     #[test]
     fn test_pre_checks_pass() {
         let config = test_config();
-        let mut pm = ProcessManager::new();
+        let pm = ProcessManager::new();
         let def = test_node_def("ok-node", "modules/ok");
         let result = pre_checks_pass(&config, &pm, NodeDepth(2), &def).unwrap();
         assert!(result);

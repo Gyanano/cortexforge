@@ -381,30 +381,7 @@ fn run_wake_flow(rt: &mut NodeRuntime) -> ForgeResult<NodeStatus> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
     use super::*;
-
-    fn make_runtime(cwd: &Path) -> NodeRuntime {
-        NodeRuntime {
-            name: NodeName::new("test-node"),
-            depth: NodeDepth(2),
-            parent: "test-parent".into(),
-            cwd: cwd.to_path_buf(),
-            root: PathBuf::from("/tmp/test-forge"),
-            is_wake_up: false,
-            state: StateMachine::new(3, 1800),
-            state_file: cwd.join(".forge/state.toml"),
-            inbox_dir: cwd.join(".forge/inbox"),
-            needs_file: cwd.join("shared/needs.toml"),
-            provides_file: cwd.join("shared/provides.toml"),
-            resolved_file: cwd.join("shared/resolved.toml"),
-            tasks_file: cwd.join("shared/tasks.toml"),
-            spawn_requests_file: cwd.join(".forge/spawn_requests.toml"),
-            token_tracker: Arc::new(Mutex::new(BudgetTracker::new(None, Some(1800)))),
-            shutdown: Arc::new(AtomicBool::new(false)),
-            start_time: Instant::now(),
-        }
-    }
 
     fn setup_test_cwd() -> (tempfile::TempDir, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf, PathBuf) {
         let dir = tempfile::tempdir().unwrap();

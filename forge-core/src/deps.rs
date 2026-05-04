@@ -775,7 +775,7 @@ impl DepGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::NeedEntry;
+    
 
     fn setup_test_nodes(dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
         let a_dir = dir.join("mod-a");
@@ -828,10 +828,6 @@ mod tests {
             budget_used: Default::default(),
         };
         state.save(&cwd.join(".forge/state.toml")).unwrap();
-    }
-
-    fn write_pid(cwd: &Path, pid: u32) {
-        std::fs::write(cwd.join(".forge/pid"), pid.to_string()).unwrap();
     }
 
     #[test]
