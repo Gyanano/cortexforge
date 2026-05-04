@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::{DateTime, FixedOffset, Utc};
 use sha2::{Digest, Sha256};
@@ -65,11 +65,12 @@ pub struct HeartbeatMonitor {
 }
 
 impl HeartbeatMonitor {
+    #[must_use] 
     pub fn new(config: &ForgeConfig) -> Self {
         Self {
             records: HashMap::new(),
             stuck_threshold: config.forge.stuck_threshold_heartbeats,
-            heartbeat_timeout: Duration::from_secs(config.forge.heartbeat_timeout_sec as u64),
+            heartbeat_timeout: Duration::from_secs(u64::from(config.forge.heartbeat_timeout_sec)),
         }
     }
 
@@ -105,8 +106,7 @@ impl HeartbeatMonitor {
 
         let current_status = state
             .as_ref()
-            .map(|s| s.state.current.parse::<NodeStatus>().unwrap_or(NodeStatus::Dead))
-            .unwrap_or(NodeStatus::Dead);
+            .map_or(NodeStatus::Dead, |s| s.state.current.parse::<NodeStatus>().unwrap_or(NodeStatus::Dead));
 
         record.current_status = current_status;
 
@@ -195,13 +195,15 @@ impl HeartbeatMonitor {
     }
 
     /// Get the heartbeat record for a node.
+    #[must_use] 
     pub fn get(&self, node_name: &str) -> Option<&HeartbeatRecord> {
         self.records.get(node_name)
     }
 
     /// Return names of all tracked nodes.
+    #[must_use] 
     pub fn tracked_nodes(&self) -> Vec<&str> {
-        self.records.keys().map(|s| s.as_str()).collect()
+        self.records.keys().map(std::string::String::as_str).collect()
     }
 }
 
@@ -260,7 +262,8 @@ pub enum PropagationDecision {
 ///
 /// §6.4: If the child's output is optional → `DegradeToPartial`.
 /// Otherwise → `EscalateBlocked`.
-pub fn decide_propagation(
+#[must_use] 
+pub const fn decide_propagation(
     child_is_optional: bool,
     parent_has_other_providers: bool,
 ) -> PropagationDecision {
@@ -274,7 +277,8 @@ pub fn decide_propagation(
 /// Check if a dependency chain should propagate death.
 ///
 /// Returns true if the requester should also be marked dead.
-pub fn should_propagate_death(
+#[must_use] 
+pub const fn should_propagate_death(
     provider_dead: bool,
     provider_has_value: bool,
     has_other_providers: bool,
@@ -288,11 +292,13 @@ pub fn should_propagate_death(
 // ─── Suicide gate checks (§6.5) ─────────────────────────────────────────
 
 /// Check if a node should self-terminate based on verify retries.
-pub fn check_verify_exhausted(retry_count: u32, max_retries: u32) -> bool {
+#[must_use] 
+pub const fn check_verify_exhausted(retry_count: u32, max_retries: u32) -> bool {
     retry_count >= max_retries
 }
 
 /// Check if wallclock budget is exhausted.
+#[must_use] 
 pub fn check_wallclock_exhausted(
     started_at: DateTime<FixedOffset>,
     max_wallclock_sec: u64,

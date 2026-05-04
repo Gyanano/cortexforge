@@ -1,4 +1,4 @@
-//! CortexForge CLI entry point.
+//! `CortexForge` CLI entry point.
 
 use std::path::PathBuf;
 
@@ -27,7 +27,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new CortexForge project
+    /// Initialize a new `CortexForge` project
     Init {
         /// Project name (defaults to directory name)
         #[arg(short, long)]
@@ -133,9 +133,7 @@ fn main() {
 
 fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeResult<()> {
     let project_name = name.unwrap_or_else(|| {
-        root.file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "cortexforge-project".into())
+        root.file_name().map_or_else(|| "cortexforge-project".into(), |n| n.to_string_lossy().to_string())
     });
 
     tracing::info!(name = %project_name, root = %root.display(), "initializing project");
@@ -373,7 +371,7 @@ fn cmd_node_message(_root: &PathBuf, to: &str) -> forge_core::error::ForgeResult
 
 /// Recursively find all node.toml files under the project root.
 fn collect_node_defs(root: &PathBuf) -> forge_core::error::ForgeResult<Vec<(String, String)>> {
-    use forge_core::protocol::NodeDefinition;
+    
     let mut nodes = Vec::new();
     collect_node_defs_recursive(root, root, &mut nodes)?;
     Ok(nodes)
@@ -388,7 +386,7 @@ fn collect_node_defs_recursive(
         Ok(e) => e,
         Err(_) => return Ok(()),
     };
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry in entries.filter_map(std::result::Result::ok) {
         let path = entry.path();
         if path.is_dir() {
             // Skip .forge and .git dirs

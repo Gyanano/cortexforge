@@ -1,4 +1,4 @@
-//! Core types for the CortexForge orchestration tree.
+//! Core types for the `CortexForge` orchestration tree.
 
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +51,7 @@ impl NodeName {
         Self(name.into())
     }
 
+    #[must_use] 
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -69,11 +70,13 @@ pub struct NodeDepth(pub u32);
 impl NodeDepth {
     pub const ROOT: Self = Self(0);
 
-    pub fn as_u32(&self) -> u32 {
+    #[must_use] 
+    pub const fn as_u32(&self) -> u32 {
         self.0
     }
 
-    pub fn child_depth(&self) -> Self {
+    #[must_use] 
+    pub const fn child_depth(&self) -> Self {
         Self(self.0 + 1)
     }
 }
@@ -93,6 +96,7 @@ impl NodePath {
         Self(path.into())
     }
 
+    #[must_use] 
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -113,11 +117,13 @@ pub struct Seq(pub u64);
 impl Seq {
     pub const ZERO: Self = Self(0);
 
-    pub fn next(&self) -> Self {
+    #[must_use] 
+    pub const fn next(&self) -> Self {
         Self(self.0 + 1)
     }
 
-    pub fn as_u64(&self) -> u64 {
+    #[must_use] 
+    pub const fn as_u64(&self) -> u64 {
         self.0
     }
 }
@@ -128,7 +134,7 @@ impl std::fmt::Display for Seq {
     }
 }
 
-/// A dependency key (e.g. "APB1_CLK", "UART_TX_PIN").
+/// A dependency key (e.g. "`APB1_CLK`", "`UART_TX_PIN`").
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DependencyKey(String);
 
@@ -137,6 +143,7 @@ impl DependencyKey {
         Self(key.into())
     }
 
+    #[must_use] 
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -175,6 +182,7 @@ pub struct BudgetTracker {
 }
 
 impl BudgetTracker {
+    #[must_use] 
     pub fn new(max_tokens: Option<u64>, max_wallclock_sec: Option<u64>) -> Self {
         Self {
             max_tokens,
@@ -183,15 +191,18 @@ impl BudgetTracker {
         }
     }
 
+    #[must_use] 
     pub fn tokens_exhausted(&self) -> bool {
-        self.max_tokens.map_or(false, |max| self.tokens_used >= max)
+        self.max_tokens.is_some_and(|max| self.tokens_used >= max)
     }
 
+    #[must_use] 
     pub fn wallclock_exhausted(&self) -> bool {
         self.max_wallclock_sec
-            .map_or(false, |max| self.wallclock_sec_used >= max)
+            .is_some_and(|max| self.wallclock_sec_used >= max)
     }
 
+    #[must_use] 
     pub fn is_exhausted(&self) -> bool {
         self.tokens_exhausted() || self.wallclock_exhausted()
     }

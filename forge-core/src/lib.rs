@@ -1,4 +1,4 @@
-//! CortexForge core library.
+//! `CortexForge` core library.
 //!
 //! Provides the foundational types, file protocol implementations,
 //! state machine engine, and dependency resolution logic for the

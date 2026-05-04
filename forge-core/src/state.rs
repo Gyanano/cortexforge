@@ -15,7 +15,7 @@ use crate::protocol::{BudgetUsedSection, ChildrenViewSection, NodeState, Progres
 
 // ─── State enum (§3.1) ──────────────────────────────────────────────────
 
-/// The 8 canonical states of a CortexForge node (§3.1).
+/// The 8 canonical states of a `CortexForge` node (§3.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeStatus {
@@ -39,17 +39,20 @@ pub enum NodeStatus {
 
 impl NodeStatus {
     /// True if this is a terminal state.
-    pub fn is_terminal(&self) -> bool {
+    #[must_use] 
+    pub const fn is_terminal(&self) -> bool {
         matches!(self, Self::Delivered | Self::Dead)
     }
 
     /// True if the node is alive (not terminal, can participate in the tree).
+    #[must_use] 
     pub fn is_alive(&self) -> bool {
         !self.is_terminal()
     }
 
     /// Return the canonical string representation.
-    pub fn as_str(&self) -> &'static str {
+    #[must_use] 
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Idle => "idle",
             Self::Assigned => "assigned",
@@ -92,27 +95,22 @@ impl std::str::FromStr for NodeStatus {
 ///
 /// This encodes the complete adjacency matrix from §3.2.
 /// Illegal transitions return false; the caller should return `ForgeError::StateInvalid`.
-pub fn is_valid_transition(from: NodeStatus, to: NodeStatus) -> bool {
-    use NodeStatus::*;
+#[must_use] 
+pub const fn is_valid_transition(from: NodeStatus, to: NodeStatus) -> bool {
+    use NodeStatus::{Idle, Assigned, Dead, Planning, Implementing, Blocked, Verifying, Delivered};
     matches!(
         (from, to),
         // idle → assigned | dead (TTL)
-        (Idle, Assigned) | (Idle, Dead)
-        // assigned → planning
-        | (Assigned, Planning)
-        // planning → implementing | blocked
-        | (Planning, Implementing) | (Planning, Blocked)
-        // implementing → verifying | blocked | dead (wallclock)
-        | (Implementing, Verifying) | (Implementing, Blocked) | (Implementing, Dead)
-        // blocked → implementing | dead (wallclock, all providers dead)
-        | (Blocked, Implementing) | (Blocked, Dead)
-        // verifying → delivered | implementing (retry) | dead (max retries)
-        | (Verifying, Delivered) | (Verifying, Implementing) | (Verifying, Dead)
+        (Idle, Assigned | Dead) | (Assigned, Planning) |
+(Planning | Blocked | Verifying, Implementing) |
+(Planning | Implementing, Blocked) | (Implementing, Verifying | Dead) |
+(Blocked | Verifying, Dead) | (Verifying, Delivered)
         // delivered / dead are terminal — no outgoing transitions
     )
 }
 
 /// Human-readable reason for an illegal transition.
+#[must_use] 
 pub fn transition_error(from: NodeStatus, to: NodeStatus) -> String {
     format!(
         "illegal state transition: {} → {}",
@@ -164,6 +162,7 @@ pub struct ChildState {
 
 impl StateMachine {
     /// Create a fresh state machine in `Idle` state.
+    #[must_use] 
     pub fn new(max_retries: u32, max_wallclock_sec: u64) -> Self {
         let now: DateTime<FixedOffset> = Utc::now().into();
         Self {
@@ -206,7 +205,7 @@ impl StateMachine {
     }
 
     /// idle → assigned: received inbox task.
-    /// Side effect: records task_id.
+    /// Side effect: records `task_id`.
     pub fn assign(&mut self, task_id: &str) -> ForgeResult<()> {
         self.ensure_current(NodeStatus::Idle, "assign")?;
         self.transition(NodeStatus::Assigned)?;
@@ -321,7 +320,7 @@ impl StateMachine {
 
     // ── Heartbeat ───────────────────────────────────────────────────────
 
-    /// Record a heartbeat, updating last_heartbeat and progress.
+    /// Record a heartbeat, updating `last_heartbeat` and progress.
     pub fn heartbeat(&mut self, summary: &str, percent: u32) {
         self.last_heartbeat = Utc::now().into();
         self.progress_summary = summary.to_string();
@@ -343,6 +342,7 @@ impl StateMachine {
     }
 
     /// Check if all children have reached `Delivered` state.
+    #[must_use] 
     pub fn all_children_delivered(&self) -> bool {
         if self.children_view.is_empty() {
             return true;
@@ -353,6 +353,7 @@ impl StateMachine {
     }
 
     /// Check if any child is dead.
+    #[must_use] 
     pub fn any_child_dead(&self) -> bool {
         self.children_view
             .values()
@@ -361,19 +362,20 @@ impl StateMachine {
 
     // ── Persistence (§4.2) ─────────────────────────────────────────────
 
-    /// Load a StateMachine from a state.toml file.
+    /// Load a `StateMachine` from a state.toml file.
     pub fn load(path: &Path) -> ForgeResult<Self> {
         let node_state = NodeState::load(path)?;
         Self::from_node_state(node_state)
     }
 
-    /// Save this StateMachine to a state.toml file.
+    /// Save this `StateMachine` to a state.toml file.
     pub fn save(&self, path: &Path) -> ForgeResult<()> {
         let node_state = self.to_node_state();
         node_state.save(path)
     }
 
     /// Convert to the file protocol struct.
+    #[must_use] 
     pub fn to_node_state(&self) -> NodeState {
         NodeState {
             schema_version: 1,

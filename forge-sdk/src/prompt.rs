@@ -4,6 +4,7 @@
 //! for Domain Agents vs Module Agents.
 
 /// Build a first-start prompt (§7.1).
+#[must_use] 
 pub fn build_first_prompt(
     name: &str,
     role: &str,
@@ -102,6 +103,7 @@ When you can provide an interface another module needs:
 }
 
 /// Build a wake-up prompt (§7.2).
+#[must_use] 
 pub fn build_wake_prompt(name: &str) -> String {
     format!(
         r#"You are {name}. You previously delivered successfully and are now re-awakened.

@@ -3,11 +3,11 @@
 //! Implements the 10-pass Orchestrator main loop:
 //! Pass 1: collect → Pass 2: build graph → Pass 3: 1st cycle check →
 //! Pass 4: match new edges → Pass 5: 2nd cycle check →
-//! Pass 6: write tasks + spawn → Pass 6b: spawn_requests →
+//! Pass 6: write tasks + spawn → Pass 6b: `spawn_requests` →
 //! Pass 7: transfer resolved → Pass 7b: dependency chain propagation →
 //! Pass 8: value change detection → Pass 9: cross-layer escalation
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::config::ForgeConfig;
@@ -16,10 +16,9 @@ use crate::event::EventType;
 use crate::eventbus::EventBus;
 use crate::protocol::{
     EscalatedNeed, EscalatedStatus, EscalatedTable, NeedsDeclaration, NodeDefinition,
-    NodeState, ProvidesDeclaration, ResolvedEntry, ResolvedValues, SpawnRequests, TaskEntry, TaskList,
+    NodeState, ProvidesDeclaration, ResolvedEntry, ResolvedValues, TaskList,
 };
 use crate::state::NodeStatus;
-use crate::types::{DependencyKey, NodeName};
 
 // ─── Dependency graph types ──────────────────────────────────────────────
 
@@ -56,6 +55,7 @@ pub struct DepGraph {
 }
 
 impl DepGraph {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -63,7 +63,8 @@ impl DepGraph {
     // ── Pass 1: Collect all node states ─────────────────────────────────
 
     /// Recursively collect all declared nodes.
-    /// Fix #98, #115: single function, renamed from collect_all_active_nodes.
+    /// Fix #98, #115: single function, renamed from `collect_all_active_nodes`.
+    #[must_use] 
     pub fn collect_all_declared_nodes(root: &Path) -> Vec<(String, PathBuf)> {
         let mut nodes = Vec::new();
         Self::collect_recursive(root, root, &mut nodes);
@@ -75,7 +76,7 @@ impl DepGraph {
             Ok(e) => e,
             Err(_) => return,
         };
-        for entry in entries.filter_map(|e| e.ok()) {
+        for entry in entries.filter_map(std::result::Result::ok) {
             let path = entry.path();
             if !path.is_dir() { continue; }
             let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
@@ -102,7 +103,7 @@ impl DepGraph {
         for (name, cwd) in declared_nodes {
             // Read PID
             let pid = crate::spawn::read_pid_file(cwd);
-            let is_alive = pid.map_or(false, |p| crate::spawn::os_probe_pid(p));
+            let is_alive = pid.is_some_and(crate::spawn::os_probe_pid);
 
             if !is_alive {
                 continue; // only alive nodes participate
@@ -114,7 +115,7 @@ impl DepGraph {
                 .as_ref()
                 .and_then(|s| s.state.current.parse::<NodeStatus>().ok())
                 .unwrap_or(NodeStatus::Dead);
-            let state_seq = state.as_ref().map(|s| s.state.sequence).unwrap_or(0);
+            let state_seq = state.as_ref().map_or(0, |s| s.state.sequence);
 
             if status == NodeStatus::Dead {
                 continue; // dead nodes don't participate (§15.7, fix #P1-9)
@@ -195,6 +196,7 @@ impl DepGraph {
 
     /// Detect cycles in the current edge set (§15.6).
     /// Returns the list of nodes in the cycle, or empty if acyclic.
+    #[must_use] 
     pub fn detect_cycles(&self, edges: &[DepEdge]) -> Vec<String> {
         // Build adjacency list
         let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -209,11 +211,10 @@ impl DepGraph {
         let mut cycle_nodes = Vec::new();
 
         for node in adj.keys() {
-            if !visited.contains(node) {
-                if self.dfs_cycle(node, &adj, &mut visited, &mut in_stack, &mut cycle_nodes) {
+            if !visited.contains(node)
+                && self.dfs_cycle(node, &adj, &mut visited, &mut in_stack, &mut cycle_nodes) {
                     return cycle_nodes;
                 }
-            }
         }
 
         cycle_nodes
@@ -236,11 +237,10 @@ impl DepGraph {
                     cycle_nodes.push(neighbor.to_string());
                     return true;
                 }
-                if !visited.contains(neighbor) {
-                    if self.dfs_cycle(neighbor, adj, visited, in_stack, cycle_nodes) {
+                if !visited.contains(neighbor)
+                    && self.dfs_cycle(neighbor, adj, visited, in_stack, cycle_nodes) {
                         return true;
                     }
-                }
             }
         }
 
@@ -349,7 +349,7 @@ impl DepGraph {
             let needs_spawn = if let Some(prov) = self.nodes.get(&edge.provider) {
                 tasks_to_write.push((edge.provider.clone(), prov.cwd.to_string_lossy().to_string(), edge.key.clone(), desc));
 
-                if prov.pid.map_or(true, |p| !crate::spawn::os_probe_pid(p)) {
+                if prov.pid.is_none_or(|p| !crate::spawn::os_probe_pid(p)) {
                     let has_value = prov.provides.provides.contains_key(&edge.key);
                     !(prov.status == NodeStatus::Delivered && has_value)
                 } else {
@@ -432,8 +432,8 @@ impl DepGraph {
         }
 
         // Apply updates to in-memory snapshots
-        for (req_name, _cwd, key, from, seq) in &updates {
-            if let Some(req) = self.nodes.get_mut(req_name) {
+        for (req_name, _cwd, key, _from, _seq) in &updates {
+            if let Some(_req) = self.nodes.get_mut(req_name) {
                 // Value is already in the file; just emit events
             }
             eventbus.append(&crate::event::EventEntry::new(
@@ -472,7 +472,7 @@ impl DepGraph {
                 let provider = self.find_provider(key);
                 if let Some(prov_name) = provider {
                     if let Some(prov) = self.nodes.get(&prov_name) {
-                        let is_alive = prov.pid.map_or(false, |p| crate::spawn::os_probe_pid(p));
+                        let is_alive = prov.pid.is_some_and(crate::spawn::os_probe_pid);
                         let has_value = prov.provides.provides.contains_key(key);
                         if is_alive || has_value {
                             all_providers_dead = false;
@@ -604,7 +604,7 @@ impl DepGraph {
             match entry.status {
                 EscalatedStatus::Pending => {
                     // Try to find a global provider
-                    let declared = DepGraph::collect_all_declared_nodes(root);
+                    let declared = Self::collect_all_declared_nodes(root);
                     for (name, cwd) in &declared {
                         if let Ok(def) = NodeDefinition::load(&cwd.join("node.toml")) {
                             if def.provides.declared.contains(&entry.key) {
@@ -650,7 +650,7 @@ impl DepGraph {
                             continue;
                         }
 
-                        let pid_alive = prov.pid.map_or(false, |p| crate::spawn::os_probe_pid(p));
+                        let pid_alive = prov.pid.is_some_and(crate::spawn::os_probe_pid);
                         if !pid_alive
                             && prov.status == NodeStatus::Delivered
                             && prov.provides.provides.contains_key(&entry.key)
@@ -695,6 +695,7 @@ impl DepGraph {
 
     /// Find a provider for a key in the current graph snapshot.
     /// Fix #68: searches in graph's node snapshot (Pass 1 collection).
+    #[must_use] 
     pub fn find_provider(&self, key: &str) -> Option<String> {
         for (name, node) in &self.nodes {
             if node.def.provides.declared.iter().any(|d| d == key) {
@@ -747,7 +748,7 @@ impl DepGraph {
     }
 
     /// Mark all nodes in a cycle as dead (recursively kills children).
-    /// Fix #61: recursive mark_cycle_dead.
+    /// Fix #61: recursive `mark_cycle_dead`.
     pub fn mark_cycle_dead(&self, cycle_nodes: &[String], eventbus: &EventBus) -> ForgeResult<()> {
         for name in cycle_nodes {
             if let Some(node) = self.nodes.get(name) {

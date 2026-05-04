@@ -5,7 +5,6 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{DependencyKey, NodeDepth, NodeName, Seq};
 
 /// An event entry in the event bus log (one NDJSON line).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,7 +177,8 @@ impl std::fmt::Display for EventType {
 
 impl EventType {
     /// Return the event type name as a static string, used for the NDJSON `event` field.
-    pub fn name(&self) -> &'static str {
+    #[must_use] 
+    pub const fn name(&self) -> &'static str {
         match self {
             Self::State { .. } => "state",
             Self::Spawn { .. } => "spawn",

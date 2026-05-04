@@ -22,22 +22,27 @@ impl ForgePaths {
         Self { root: root.into() }
     }
 
+    #[must_use] 
     pub fn root(&self) -> &std::path::Path {
         &self.root
     }
 
+    #[must_use] 
     pub fn state_file(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/state.toml")
     }
 
+    #[must_use] 
     pub fn inbox_dir(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/inbox")
     }
 
+    #[must_use] 
     pub fn shared_dir(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join("shared")
     }
 
+    #[must_use] 
     pub fn pid_file(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/pid")
     }
@@ -63,25 +68,25 @@ pub struct ForgeSection {
     pub spawn_timeout_sec: u32,
 }
 
-fn default_max_total_nodes() -> u32 {
+const fn default_max_total_nodes() -> u32 {
     64
 }
-fn default_heartbeat_interval() -> u32 {
+const fn default_heartbeat_interval() -> u32 {
     15
 }
-fn default_heartbeat_timeout() -> u32 {
+const fn default_heartbeat_timeout() -> u32 {
     60
 }
-fn default_max_retries() -> u32 {
+const fn default_max_retries() -> u32 {
     3
 }
-fn default_stuck_threshold() -> u32 {
+const fn default_stuck_threshold() -> u32 {
     4
 }
-fn default_scan_interval() -> u32 {
+const fn default_scan_interval() -> u32 {
     5
 }
-fn default_spawn_timeout() -> u32 {
+const fn default_spawn_timeout() -> u32 {
     30
 }
 

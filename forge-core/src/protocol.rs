@@ -1,13 +1,13 @@
 //! File protocol types — all TOML schema structs from §4.
 //!
 //! Each subsection corresponds to its architecture-document section:
-//! - §4.1 node.toml — NodeDefinition
-//! - §4.2 state.toml — NodeState
-//! - §4.3 inbox/*.toml — InboxMessage
-//! - §4.4 shared/ — NeedsDeclaration, ProvidesDeclaration, ResolvedValues, TaskList
-//! - §4.5 eventbus.log — see crate::event
-//! - §4.6 forge.toml — see crate::config
-//! - §4.7 escalated.toml — EscalatedTable
+//! - §4.1 node.toml — `NodeDefinition`
+//! - §4.2 state.toml — `NodeState`
+//! - §4.3 inbox/*.toml — `InboxMessage`
+//! - §4.4 shared/ — `NeedsDeclaration`, `ProvidesDeclaration`, `ResolvedValues`, `TaskList`
+//! - §4.5 eventbus.log — see `crate::event`
+//! - §4.6 forge.toml — see `crate::config`
+//! - §4.7 escalated.toml — `EscalatedTable`
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -16,7 +16,7 @@ use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ForgeResult;
-use crate::types::{DependencyKey, DependencyValue, NodeDepth, NodeName, NodePath, NodeRole, Seq};
+use crate::types::NodeRole;
 
 // ─── §4.1 node.toml — NodeDefinition ───────────────────────────────────────
 
@@ -79,16 +79,16 @@ pub struct NodeBudgetSection {
     pub max_subprocess: u32,
 }
 
-fn default_max_tokens() -> u64 {
+const fn default_max_tokens() -> u64 {
     200_000
 }
-fn default_max_wallclock() -> u64 {
+const fn default_max_wallclock() -> u64 {
     1800
 }
-fn default_max_retries() -> u32 {
+const fn default_max_retries() -> u32 {
     3
 }
-fn default_max_subprocess() -> u32 {
+const fn default_max_subprocess() -> u32 {
     4
 }
 
@@ -356,8 +356,8 @@ impl InboxMessage {
             return Ok(vec![]);
         }
         let mut files: Vec<_> = std::fs::read_dir(inbox_dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "toml"))
+            .filter_map(std::result::Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
             .map(|e| e.path())
             .collect();
         files.sort();
@@ -427,11 +427,13 @@ impl ProvidesDeclaration {
     }
 
     /// Check if a specific key exists in the provides declaration.
+    #[must_use] 
     pub fn has(&self, key: &str) -> bool {
         self.provides.contains_key(key)
     }
 
     /// Get the entry for a key.
+    #[must_use] 
     pub fn get(&self, key: &str) -> Option<&ProvideEntry> {
         self.provides.get(key)
     }
@@ -468,11 +470,13 @@ impl ResolvedValues {
     }
 
     /// Check if all needed keys are present.
+    #[must_use] 
     pub fn has_all(&self, keys: &[String]) -> bool {
         keys.iter().all(|k| self.resolved.contains_key(k))
     }
 
     /// Check if a specific key exists.
+    #[must_use] 
     pub fn has(&self, key: &str) -> bool {
         self.resolved.contains_key(key)
     }
@@ -494,7 +498,7 @@ pub struct TaskEntry {
     pub status: TaskStatus,
 }
 
-fn default_task_status() -> TaskStatus {
+const fn default_task_status() -> TaskStatus {
     TaskStatus::Pending
 }
 
@@ -521,6 +525,7 @@ impl TaskList {
     }
 
     /// Check if a task already exists (dedup by key + from).
+    #[must_use] 
     pub fn has_task(&self, key: &str, from: &str) -> bool {
         self.tasks.iter().any(|t| t.key == key && t.from == from)
     }
@@ -540,6 +545,7 @@ impl TaskList {
     }
 
     /// Get all pending tasks.
+    #[must_use] 
     pub fn pending(&self) -> Vec<&TaskEntry> {
         self.tasks.iter().filter(|t| t.status == TaskStatus::Pending).collect()
     }
@@ -601,7 +607,7 @@ pub struct EscalatedNeed {
     pub provides: Vec<String>,
 }
 
-fn default_escalated_status() -> EscalatedStatus {
+const fn default_escalated_status() -> EscalatedStatus {
     EscalatedStatus::Pending
 }
 
@@ -633,6 +639,7 @@ impl EscalatedTable {
     }
 
     /// Check if there's already a non-terminal entry for the same requester+key.
+    #[must_use] 
     pub fn has_pending(&self, key: &str, requester: &str) -> bool {
         self.needs.iter().any(|e| {
             e.key == key

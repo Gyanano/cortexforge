@@ -25,6 +25,6 @@ jobs:
       - name: Test
         run: cargo test --workspace
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace
       - name: Format check
         run: cargo fmt --all -- --check

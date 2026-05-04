@@ -4,7 +4,6 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
 
 use crate::error::ForgeResult;
 use crate::event::EventEntry;
@@ -27,7 +26,7 @@ impl EventBus {
 
     /// Append a single event as one NDJSON line.
     ///
-    /// Uses O_APPEND for safe concurrent appends (within OS limits for small writes).
+    /// Uses `O_APPEND` for safe concurrent appends (within OS limits for small writes).
     pub fn append(&self, entry: &EventEntry) -> ForgeResult<()> {
         let mut file = OpenOptions::new()
             .create(true)

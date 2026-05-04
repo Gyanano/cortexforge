@@ -7,7 +7,6 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::{ForgeError, ForgeResult};
-use crate::protocol::NodeDefinition;
 
 // ─── File isolation (§9) ────────────────────────────────────────────────
 
@@ -87,7 +86,7 @@ pub fn check_network_access(network_allowed: bool) -> ForgeResult<()> {
 /// Check if a node has spawn authority.
 ///
 /// Only Domain Agents can request child spawn, and only through
-/// spawn_requests.toml — never directly. Orchestrator is the sole
+/// `spawn_requests.toml` — never directly. Orchestrator is the sole
 /// process with actual subprocess spawn capability.
 pub fn check_spawn_authority(role: &str) -> ForgeResult<()> {
     if role == "domain" || role == "orchestrator" {
@@ -105,8 +104,10 @@ pub fn check_spawn_authority(role: &str) -> ForgeResult<()> {
 ///
 /// Post-MVP hardening will support chroot / bubblewrap / Docker backends.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum SandboxConfig {
     /// No sandbox (MVP default).
+    #[default]
     None,
     /// chroot-based isolation (future).
     Chroot { root: PathBuf },
@@ -116,14 +117,10 @@ pub enum SandboxConfig {
     Docker { image: String },
 }
 
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl SandboxConfig {
-    pub fn is_enabled(&self) -> bool {
+    #[must_use] 
+    pub const fn is_enabled(&self) -> bool {
         !matches!(self, Self::None)
     }
 }

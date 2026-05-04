@@ -1,7 +1,7 @@
 //! Atomic file I/O utilities (§15.8).
 //!
-//! atomic_write: tmp + rename for crash-safe writes.
-//! safe_read_toml: tolerant read, returns None on any failure.
+//! `atomic_write`: tmp + rename for crash-safe writes.
+//! `safe_read_toml`: tolerant read, returns None on any failure.
 
 use std::fs;
 use std::path::Path;
@@ -17,6 +17,7 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<(), std::io::Error> {
 }
 
 /// Tolerantly read and parse a TOML file. Returns `None` on any error.
+#[must_use] 
 pub fn safe_read_toml<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
     let s = fs::read_to_string(path).ok()?;
     toml::from_str(&s).ok()

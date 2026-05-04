@@ -5,7 +5,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -97,6 +96,7 @@ pub struct ProcessManager {
 }
 
 impl ProcessManager {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -130,7 +130,7 @@ impl ProcessManager {
     pub fn is_alive(&mut self, name: &str) -> bool {
         self.children
             .get_mut(name)
-            .map_or(false, |h| h.is_alive())
+            .is_some_and(ChildHandle::is_alive)
     }
 
     /// Kill a child by name.
@@ -142,13 +142,15 @@ impl ProcessManager {
     }
 
     /// Count of tracked children.
+    #[must_use] 
     pub fn active_count(&self) -> usize {
         self.children.len()
     }
 
     /// Get all registered child names.
+    #[must_use] 
     pub fn names(&self) -> Vec<&str> {
-        self.children.keys().map(|s| s.as_str()).collect()
+        self.children.keys().map(std::string::String::as_str).collect()
     }
 
     /// Check alive status for all children, removing dead ones.
@@ -156,11 +158,11 @@ impl ProcessManager {
     pub fn reap_dead(&mut self) -> Vec<String> {
         let mut dead = Vec::new();
         self.children.retain(|name, handle| {
-            if !handle.is_alive() {
+            if handle.is_alive() {
+                true
+            } else {
                 dead.push(name.clone());
                 false
-            } else {
-                true
             }
         });
         for name in &dead {
@@ -285,7 +287,7 @@ pub fn spawn_child(
     proc_mgr.register(handle);
 
     let state_file = cwd.join(".forge/state.toml");
-    let timeout = Duration::from_secs(config.forge.spawn_timeout_sec as u64);
+    let timeout = Duration::from_secs(u64::from(config.forge.spawn_timeout_sec));
 
     if !wait_for_state_file(&state_file, timeout) {
         proc_mgr.kill_child(&child_def.node.name)?;
@@ -493,6 +495,7 @@ pub fn write_pid_file(cwd: &Path, pid: u32, node_name: &str) -> ForgeResult<()> 
 }
 
 /// Read the PID from a node's .forge/pid file.
+#[must_use] 
 pub fn read_pid_file(cwd: &Path) -> Option<u32> {
     let pid_path = cwd.join(".forge/pid");
     fs::read_to_string(&pid_path)
@@ -503,6 +506,7 @@ pub fn read_pid_file(cwd: &Path) -> Option<u32> {
 }
 
 /// Read all PID info from a node directory.
+#[must_use] 
 pub fn read_pid_info(cwd: &Path) -> Option<(u32, String, String)> {
     let pid = read_pid_file(cwd)?;
     let node_name = fs::read_to_string(cwd.join(".forge/node_name"))
@@ -534,8 +538,9 @@ fn wait_for_state_file(path: &Path, timeout: Duration) -> bool {
 ///
 /// Returns true if the process exists (signal delivery possible).
 #[cfg(unix)]
+#[must_use] 
 pub fn os_probe_pid(pid: u32) -> bool {
-    use nix::sys::signal::Signal;
+    
     use nix::unistd::Pid;
     nix::sys::signal::kill(Pid::from_raw(pid as i32), None).is_ok()
 }
@@ -589,7 +594,7 @@ fn rebuild_recursive(
         Err(_) => return Ok(()),
     };
 
-    for entry in entries.filter_map(|e| e.ok()) {
+    for entry in entries.filter_map(std::result::Result::ok) {
         let path = entry.path();
         if !path.is_dir() {
             continue;

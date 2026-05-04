@@ -44,7 +44,7 @@ pub struct NodeRuntime {
 }
 
 impl NodeRuntime {
-    /// Initialize from environment variables (FORGE_NODE_NAME, FORGE_ROOT, etc.).
+    /// Initialize from environment variables (`FORGE_NODE_NAME`, `FORGE_ROOT`, etc.).
     ///
     /// Writes the PID file and initial state.toml (state=idle).
     pub fn from_env() -> ForgeResult<Self> {
@@ -131,6 +131,7 @@ impl NodeRuntime {
     /// Start the heartbeat watchdog thread.
     ///
     /// Returns a handle that can be joined on shutdown.
+    #[must_use] 
     pub fn start_heartbeat(&self, interval_sec: u64) -> std::thread::JoinHandle<()> {
         let state_file = self.state_file.clone();
         let shutdown = self.shutdown.clone();
@@ -221,6 +222,7 @@ impl NodeRuntime {
     }
 
     /// Check if budget is exhausted.
+    #[must_use] 
     pub fn budget_exhausted(&self) -> bool {
         self.token_tracker
             .lock()
@@ -229,6 +231,7 @@ impl NodeRuntime {
     }
 
     /// Get elapsed wallclock seconds.
+    #[must_use] 
     pub fn elapsed_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
@@ -237,8 +240,8 @@ impl NodeRuntime {
 
     /// Execute `./verify.sh` with a timeout.
     ///
-    /// Returns (exit_code, stdout, stderr).
-    pub fn run_verify(&self, timeout_sec: u64) -> ForgeResult<VerifyOutcome> {
+    /// Returns (`exit_code`, stdout, stderr).
+    pub fn run_verify(&self, _timeout_sec: u64) -> ForgeResult<VerifyOutcome> {
         use std::process::Command;
 
         let script = self.cwd.join("verify.sh");
@@ -274,7 +277,8 @@ pub struct VerifyOutcome {
 }
 
 impl VerifyOutcome {
-    pub fn passed(&self) -> bool {
+    #[must_use] 
+    pub const fn passed(&self) -> bool {
         self.exit_code == 0
     }
 }
@@ -351,14 +355,14 @@ fn run_wake_flow(rt: &mut NodeRuntime) -> ForgeResult<NodeStatus> {
     // Process each pending task
     for task in pending {
         // Check if we already provide this key
-        if let Some(existing) = provides.get(&task.key) {
+        if let Some(_existing) = provides.get(&task.key) {
             // Value unchanged — don't increment seq (avoids cascading value_changed noise)
             // Just mark task done
             continue;
         }
 
         // New key or value change — add with incremented seq
-        let new_seq = provides.get(&task.key).map(|e| e.seq + 1).unwrap_or(1);
+        let new_seq = provides.get(&task.key).map_or(1, |e| e.seq + 1);
         provides.provides.insert(
             task.key.clone(),
             forge_core::protocol::ProvideEntry {

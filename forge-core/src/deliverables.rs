@@ -2,7 +2,6 @@
 //!
 //! Manages artifact publication, TOCTOU protection, and integration ordering.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -153,7 +152,8 @@ pub fn write_changelog(deliverables_dir: &Path, entries: &[&str]) -> ForgeResult
 /// Check for TOCTOU mismatch between artifacts and current state.
 ///
 /// Returns true if the artifacts match the expected state sequence.
-pub fn check_toc_tou(manifest: &ArtifactsManifest, current_state_seq: u64) -> bool {
+#[must_use] 
+pub const fn check_toc_tou(manifest: &ArtifactsManifest, current_state_seq: u64) -> bool {
     manifest.state_sequence == current_state_seq
 }
 
@@ -163,6 +163,7 @@ pub fn check_toc_tou(manifest: &ArtifactsManifest, current_state_seq: u64) -> bo
 const ROLE_ORDER: &[&str] = &["hal", "bsp", "mw", "app", "drv", "test", "tools"];
 
 /// Get the integration priority for a role. Lower = earlier in integration.
+#[must_use] 
 pub fn integration_priority(role: &str) -> usize {
     ROLE_ORDER
         .iter()
@@ -171,6 +172,7 @@ pub fn integration_priority(role: &str) -> usize {
 }
 
 /// Topologically sort nodes by role for integration ordering.
+#[must_use] 
 pub fn sort_by_integration_order(
     nodes: &[(String, String)], // (name, role)
 ) -> Vec<String> {

@@ -1,8 +1,8 @@
-//! Error types for CortexForge.
+//! Error types for `CortexForge`.
 
 use crate::types::NodeName;
 
-/// Unified error type for all CortexForge operations.
+/// Unified error type for all `CortexForge` operations.
 #[derive(Debug, thiserror::Error)]
 pub enum ForgeError {
     #[error("configuration error: {0}")]
@@ -34,5 +34,5 @@ pub enum ForgeError {
     Other(String),
 }
 
-/// Alias for Result with ForgeError.
+/// Alias for Result with `ForgeError`.
 pub type ForgeResult<T> = Result<T, ForgeError>;

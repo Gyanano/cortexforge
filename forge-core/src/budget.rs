@@ -1,15 +1,16 @@
 //! Budget tracking and enforcement.
 //!
 //! Implements budget checks from §5.1 (spawn pre-checks) and §6.5 (suicide gate).
-//! BudgetTracker lives in types.rs; this module provides global/per-layer checking.
+//! `BudgetTracker` lives in types.rs; this module provides global/per-layer checking.
 
 use crate::config::ForgeConfig;
 use crate::types::NodeDepth;
 
 /// Check whether there is enough remaining budget for a child node.
 ///
-/// Checks both global max_tokens_total and the per-layer token budget,
+/// Checks both global `max_tokens_total` and the per-layer token budget,
 /// returning the tighter constraint. Used by spawn pre-checks (§5.1).
+#[must_use] 
 pub fn remaining_budget(
     config: &ForgeConfig,
     child_depth: NodeDepth,
