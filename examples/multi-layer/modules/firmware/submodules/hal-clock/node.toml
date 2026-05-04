@@ -1,0 +1,22 @@
+[node]
+name = "hal-clock"
+role = "module"
+cwd = "modules/firmware/submodules/hal-clock"
+parent = "domain-firmware"
+depth = 2
+
+[children]
+declared = []
+spawn_strategy = "lazy"
+
+[provides]
+declared = ["APB1_CLK", "APB2_CLK", "HCLK"]
+
+[budget]
+max_tokens = 200_000
+max_wallclock_sec = 1800
+max_retries = 3
+max_subprocess = 0
+
+[runtime]
+model = "claude-sonnet-4-6"

@@ -8,7 +8,7 @@
 - **平台无关**：不绑定 STM32 / ESP32 / NXP / GD32 等具体厂商。具体工具链假设落在每个模块自己
   的 `<module>/CLAUDE.md` 里。
 - **运行时**：Claude Agent SDK + subprocess + 文件状态总线；Claude Code 是开发者 IDE，**不是**运行时。
-- **当前阶段**：方法论设计与文档迭代；尚未引入业务模块或实现代码。
+- **当前阶段**：MVP 核心实现完成（96 tests），可本地构建运行。
 
 ## 顶层拓扑（强约束）
 - **N 级递归树**：根 Orchestrator (L0) + Domain Agents (L1) + Module Agents (L2+)。
@@ -65,6 +65,21 @@
 - Bash：`node.toml` 里 `[bash_allowlist]` 显式列；hook 校验命令前缀。
 - 网络：默认 deny。
 - Spawn：节点本身**没有** subprocess 权限。
+
+## 构建与测试
+```bash
+cargo build              # 构建 workspace（forge-core + forge-cli + forge-sdk）
+cargo test               # 全量测试（96 tests）
+cargo run -p forge-cli -- init   # 初始化项目
+cargo run -p forge-cli -- validate  # 校验配置
+```
+
+## Crate 结构
+| Crate | 职责 |
+|-------|------|
+| `forge-core` | 核心类型、文件协议、状态机、Spawn、心跳、权限、依赖解析引擎、事件总线 |
+| `forge-cli` | `forge` 命令行工具（init/validate/run/status/kill/log/node） |
+| `forge-sdk` | 节点运行时（NodeRuntime、心跳 watchdog、verify 闸门、Prompt 构建） |
 
 ## 文档导航
 - [`docs/01-architecture.md`](./docs/01-architecture.md) — 唯一权威架构文档（SDK 树形版，含评估、

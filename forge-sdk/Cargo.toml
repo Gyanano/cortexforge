@@ -1,0 +1,22 @@
+[package]
+name = "forge-sdk"
+edition = { workspace = true }
+version = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+rust-version = { workspace = true }
+description = "CortexForge per-node SDK — Claude process wrapper, prompt builder, heartbeat loop"
+
+[dependencies]
+forge-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

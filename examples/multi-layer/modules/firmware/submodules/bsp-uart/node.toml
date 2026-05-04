@@ -1,0 +1,22 @@
+[node]
+name = "bsp-uart"
+role = "module"
+cwd = "modules/firmware/submodules/bsp-uart"
+parent = "domain-firmware"
+depth = 2
+
+[children]
+declared = []
+spawn_strategy = "lazy"
+
+[provides]
+declared = ["UART_TX_PIN", "UART_RX_PIN"]
+
+[budget]
+max_tokens = 200_000
+max_wallclock_sec = 1800
+max_retries = 3
+max_subprocess = 0
+
+[runtime]
+model = "claude-sonnet-4-6"

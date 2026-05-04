@@ -1,0 +1,36 @@
+[forge]
+schema_version = 1
+max_depth = 4
+max_total_nodes = 64
+heartbeat_interval_sec = 15
+heartbeat_timeout_sec = 60
+default_max_retries = 3
+stuck_threshold_heartbeats = 4
+scan_interval_sec = 5
+spawn_timeout_sec = 30
+
+[budget.global]
+max_tokens_total = 5_000_000
+max_wallclock_total_sec = 14400
+
+[[budget.per_layer]]
+layer = 1
+tokens = 300_000
+wallclock_sec = 3600
+model = "claude-sonnet-4-6"
+
+[[budget.per_layer]]
+layer = 2
+tokens = 200_000
+wallclock_sec = 1800
+model = "claude-sonnet-4-6"
+
+[[budget.per_layer]]
+layer = 3
+tokens = 100_000
+wallclock_sec = 900
+model = "claude-haiku-4-5"
+
+[paths]
+event_bus = ".forge/eventbus.log"
+escalated = ".forge/escalated.toml"

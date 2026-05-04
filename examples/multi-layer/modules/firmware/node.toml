@@ -1,0 +1,22 @@
+[node]
+name = "domain-firmware"
+role = "domain"
+cwd = "modules/firmware"
+parent = ""
+depth = 1
+
+[children]
+declared = ["hal-clock", "bsp-uart"]
+spawn_strategy = "lazy"
+
+[provides]
+declared = []
+
+[budget]
+max_tokens = 300_000
+max_wallclock_sec = 3600
+max_retries = 3
+max_subprocess = 4
+
+[runtime]
+model = "claude-sonnet-4-6"
