@@ -3,7 +3,7 @@
 //! Manages the node lifecycle: PID file, initial state, heartbeat watchdog,
 //! budget tracking, verify gate execution, and file protocol helpers.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -381,6 +381,7 @@ fn run_wake_flow(rt: &mut NodeRuntime) -> ForgeResult<NodeStatus> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use super::*;
 
     fn make_runtime(cwd: &Path) -> NodeRuntime {
