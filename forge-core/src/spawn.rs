@@ -389,6 +389,7 @@ fn build_env(
 
 // ─── Prompt builders (§7) ───────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn build_first_prompt(
     name: &str,
     role: &str,

@@ -71,6 +71,7 @@ impl DepGraph {
         nodes
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_recursive(base: &Path, dir: &Path, nodes: &mut Vec<(String, PathBuf)>) {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,

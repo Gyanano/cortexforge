@@ -1,4 +1,5 @@
 //! `CortexForge` CLI entry point.
+#![allow(clippy::ptr_arg)]
 
 use std::path::PathBuf;
 

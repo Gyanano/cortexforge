@@ -5,6 +5,7 @@
 
 /// Build a first-start prompt (§7.1).
 #[must_use] 
+#[allow(clippy::too_many_arguments)]
 pub fn build_first_prompt(
     name: &str,
     role: &str,
