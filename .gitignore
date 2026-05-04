@@ -13,6 +13,7 @@ Thumbs.db
 .claude/settings.local.json
 .claude/sessions/
 .claude/cache/
+.claude/scheduled_tasks.lock
 
 # Forge runtime artifacts (generated at runtime, not checked in)
 .forge/pids.toml
