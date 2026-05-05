@@ -1,252 +1,267 @@
 <p align="center">
-  <a href="#cortexforge">English</a> &nbsp;|&nbsp;
-  <a href="#cortexforge-1">中文</a>
+  <img src="https://img.shields.io/badge/CortexForge-N%E7%BA%A7%E9%80%92%E5%BD%92%E6%A0%91%E7%BC%96%E6%8E%92-blue?style=for-the-badge" alt="CortexForge" />
+</p>
+
+<p align="center">
+  <a href="https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml"><img src="https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/Gyanano/cortexforge/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+  <a href="https://github.com/Gyanano/cortexforge"><img src="https://img.shields.io/github/stars/Gyanano/cortexforge?style=social" alt="Stars" /></a>
+</p>
+
+<p align="center">
+  <strong>CortexForge</strong> — 面向 MCU 嵌入式开发的 N 级递归 Agent 编排环境。<br>
+  平台无关 · 文件总线协议 · Pull-based 依赖解析 · Claude Agent SDK 驱动<br>
+  <sub>Platform-agnostic, file-bus-based agent orchestration for MCU embedded development.</sub>
+</p>
+
+<p align="center">
+  <a href="README.md#english">English</a> &nbsp;|&nbsp;
+  <a href="README.md#中文">中文</a>
 </p>
 
 ---
 
-# CortexForge
+## English
 
-> N-level recursive agent orchestration for MCU embedded development.
+> **CortexForge** is an N-level recursive agent orchestration environment for MCU embedded development.
+> It lets Claude spawn and manage a tree of specialized agent processes — each focused on
+> a single hardware module — that coordinate through a pull-based dependency resolution engine.
+>
+> **Not a Claude Code wrapper.** CortexForge uses Claude Agent SDK + subprocess + a TOML file state bus.
+> Claude Code is the developer IDE, not the runtime.
 
-CortexForge is a **platform-agnostic**, file-bus-based agent orchestration environment.
-It lets Claude spawn and manage a tree of specialized agent processes — each focused on
-a single hardware module (HAL, BSP, driver, middleware, application) — that coordinate
-via a pull-based dependency resolution engine.
-
-**Not a Claude Code wrapper.** CortexForge uses Claude Agent SDK + subprocess + a TOML
-file state bus. Claude Code is the developer IDE, not the runtime.
-
-## Quick Start
+### Quick Start
 
 ```bash
-# 1. Install
-git clone https://github.com/Gyanano/cortexforge.git
-cd cortexforge
+git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
-# 2. Create a project
+# Interactive project wizard — select MCU, toolchain, layers, describe modules
 cargo run -- forge init
 
-# 3. Flesh out with Claude
+# Have Claude flesh out skeleton files
 export ANTHROPIC_API_KEY=sk-...
 claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
-# 4. Validate & run
+# Validate & run the orchestrator
 cargo run -- forge validate
 cargo run -- forge run
 ```
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `forge init` | Interactive project wizard — select MCU, toolchain, layers, describe modules |
-| `forge validate` | Validate forge.toml + all node.toml files |
-| `forge run` | Start the orchestrator daemon (10-pass dep resolution + heartbeat monitoring) |
-| `forge status` | Tree view of all node states with Unicode status icons |
-| `forge node list/show` | Inspect declared nodes |
-| `forge log` | Read the NDJSON event bus (`--follow`, `--node`, `--event`, `--since`) |
-| `forge kill` | Kill a node or subtree |
-
-## Architecture
+### Key Concepts
 
 ```
 forge_root/
-  forge.toml                   # Global config (§4.6)
+  forge.toml                     # Global config (max_depth, budget, heartbeat)
   .forge/
-    eventbus.log               # NDJSON event log (Orchestrator writes)
-    escalated.toml             # Cross-layer dependency routing
+    eventbus.log                 # NDJSON event log — sole writer: Orchestrator
+    escalated.toml               # Cross-layer dependency routing table
   modules/
-    firmware/                  # L1 — Domain Agent
-      node.toml                # Node definition (§4.1)
-      verify.sh                # Verification gate (§8)
-      CLAUDE.md                # Module methodology
-      .forge/
-        state.toml             # State machine + heartbeat (§4.2)
-        inbox/                 # Message queue (directory as queue)
-      shared/
-        needs.toml             # "What I need" — pull-based dependency discovery
-        provides.toml          # "What I provide" — key → value + seq version
-        resolved.toml          # Orchestrator writes matched values
-        tasks.toml             # Orchestrator writes pending tasks
+    firmware/                    # L1 Domain Agent — manages sub-modules
+      node.toml                  # Static definition: name, role, provides, children
+      verify.sh                  # Self-verification gate (exit 0 = pass)
+      CLAUDE.md                  # Module methodology & toolchain assumptions
+      .forge/state.toml          # Dynamic state: 8-state FSM, heartbeat, progress
+      .forge/inbox/              # Message queue — directory as queue, concurrent-safe
+      shared/needs.toml          # "What I need" — discovered during development
+      shared/provides.toml       # "What I provide" — key → value + seq version
+      shared/resolved.toml       # Orchestrator writes matched dependency values
+      shared/tasks.toml          # Orchestrator writes pending provider tasks
       submodules/
-        hal-clock/             # L2 — Module Agent
-        bsp-uart/              # L2 — Module Agent
+        hal-clock/               # L2 Module Agent — provides APB1_CLK, APB2_CLK
+        bsp-uart/                # L2 Module Agent — provides UART_TX_PIN
 ```
-
-### Core mechanisms
 
 | Mechanism | Description |
 |-----------|-------------|
-| **N-level recursive tree** | Same `spawn_child()` function at every level; `max_depth` in forge.toml |
+| **N-level recursive tree** | Same `spawn_child()` at every level; depth constrained by `forge.toml.max_depth` |
 | **8-state FSM** | `idle → assigned → planning → implementing ↔ blocked → verifying → delivered / dead` |
-| **Pull-based deps** | Modules declare needs during development; Orchestrator matches providers, resolves |
-| **10-pass dep engine** | Collect → build graph → cycle check ×2 → match → spawn → resolve → propagate → value change → cross-layer |
-| **Heartbeat + TTL** | Per-node heartbeat files; stuck detection via SHA256 progress hash; dead branch propagation |
-| **verify.sh gate** | Each module self-verifies; parent only trusts `state="delivered"` |
-| **TOML file bus** | All inter-node communication via `.forge/` directory protocol — no RPC, no message broker |
+| **Pull-based dependencies** | Modules declare needs at dev time; Orchestrator matches providers, resolves values |
+| **10-pass dependency engine** | Collect → build graph → cycle check×2 → match → spawn → resolve → propagate → value change → cross-layer |
+| **Heartbeat + TTL** | Per-node heartbeat files; SHA256 progress-hash stuck detection; dead branch propagation |
+| **verify.sh gate** | Every module self-verifies; parent only trusts `state="delivered"` |
+| **TOML file bus** | All cross-node communication via `.forge/` directory protocol — zero RPC, zero brokers |
+| **Permissions & isolation** | Per-node `realpath` file boundary; Bash allowlist; network control; spawn authority restricted |
 
-## Crate Structure
+### CLI Commands
 
-| Crate | Purpose | Tests |
-|-------|---------|-------|
-| `forge-core` | Types, protocols, state machine, spawn, heartbeat, dependency engine, event bus, permissions | 82 |
-| `forge-cli` | `forge` command-line interface | — |
-| `forge-sdk` | Node runtime: watchdog, verify gate, prompt builder | 7 |
-| `mvp_tests` | End-to-end MVP criteria validation | 9 |
+| Command | Description |
+|---------|-------------|
+| `forge init` | Interactive wizard: MCU, toolchain, layers, module descriptions → skeleton project |
+| `forge validate` | Validate `forge.toml` + all `node.toml` files for syntax & semantics |
+| `forge run` | Start the orchestrator daemon: 10-pass dep resolution + heartbeat monitoring loop |
+| `forge status` | Tree view of node states with Unicode icons (`○ ◕ ✅ ❌`) + `--json` |
+| `forge node list` | List all declared nodes |
+| `forge node show <name>` | Show node details: role, depth, children, provides, runtime state |
+| `forge log` | Read event bus: `--node`, `--event`, `--since`, `--follow` |
+| `forge kill <node>` | Kill a node or subtree: `--force` (skip grace), `--cascade` (recursive) |
 
-**Total: 98 tests** | CI: [![CI](https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml)
+### Crate Structure
 
-## MVP Status (§13)
+| Crate | Lines | Tests | Purpose |
+|-------|-------|-------|---------|
+| `forge-core` | ~7000 | 82 | Types, 10 TOML protocols, FSM, spawn, heartbeat, 10-pass dep engine, event bus, permissions, deliverables |
+| `forge-cli` | ~800 | — | `forge` CLI with 7 subcommands + interactive init wizard |
+| `forge-sdk` | ~700 | 7 | Node runtime: watchdog thread, verify gate, prompt builder |
+| `mvp_tests` | ~480 | 9 | End-to-end MVP criteria validation |
+| **Total** | **~9000** | **98** | |
 
-- ✅ 3-layer spawn
-- ✅ Recursive symmetry (L0→L1 same code as L1→L2)
-- ✅ Heartbeat timeout kills branch, siblings unaffected
-- ✅ Dependency discovery & resolution
-- ✅ Cycle detection (DFS)
-- ✅ Dead branch propagation
-- ✅ Crash recovery (PID table rebuild)
-- ✅ Event bus node lifecycle reconstruction
+### MVP Verification (§13)
 
-## Documentation
+| # | Criterion | Test | Status |
+|---|-----------|------|--------|
+| 1 | 3-layer spawn works | `mvp1_three_layer_spawn` | ✅ |
+| 2 | Recursive symmetry | `mvp2_recursive_symmetry` | ✅ |
+| 3 | Heartbeat timeout → kill branch | `mvp3_heartbeat_timeout_detection` | ✅ |
+| 4 | Dependency discovery & resolve | `mvp4_dependency_discovery_and_resolution` | ✅ |
+| 5 | Cycle detection | `mvp5_cycle_detection` | ✅ |
+| 6 | Dead branch propagation | `mvp6_dead_branch_propagation` | ✅ |
+| 7 | Crash recovery (PID rebuild) | `mvp7_crash_recovery_pid_rebuild` | ✅ |
+| 8 | Event bus lifecycle reconstruction | `mvp8_event_bus_reconstruction` | ✅ |
 
-- [`docs/01-architecture.md`](docs/01-architecture.md) — Authoritative architecture document (1605 lines, ~30 review rounds, 118 tracked fix-points)
-- [`docs/02-implementation-status.md`](docs/02-implementation-status.md) — Implementation status, crate structure, key API reference
-- [`CLAUDE.md`](CLAUDE.md) — Project-level long-term memory (loaded by Claude Code)
+### Documentation
 
-## License
+| Document | Description |
+|----------|-------------|
+| [`docs/01-architecture.md`](docs/01-architecture.md) | Authoritative architecture — 1605 lines, ~30 review rounds, 118 tracked fix-points |
+| [`docs/02-implementation-status.md`](docs/02-implementation-status.md) | Implementation status, full crate structure, key API reference |
+| [`docs/archive/`](docs/archive/) | Historical evaluation reports (superseded) |
+| [`CLAUDE.md`](CLAUDE.md) | Project-level long-term memory (auto-loaded by Claude Code) |
 
-MIT
+### Requirements
+
+- **Rust** 1.85+ (edition 2024)
+- **Claude CLI** — for `forge run` to spawn `claude -p` child processes
+- **ANTHROPIC_API_KEY** — set as environment variable
+- **macOS or Linux** — process management uses POSIX signals
+
+### License
+
+MIT — see [LICENSE](LICENSE).
+
+<p align="right"><a href="README.md#cortexforge">↑ Back to top</a></p>
 
 ---
 
-<p align="center">
-  <a href="#cortexforge">↑ English</a> &nbsp;|&nbsp;
-  <a href="#cortexforge-1">↑ 中文</a>
-</p>
+## 中文
 
----
+> **CortexForge** 是一个面向 MCU 嵌入式开发的 N 级递归 Agent 编排环境。
+> 它让 Claude 能够 spawn 并管理一棵由专用 Agent 进程组成的树——每个进程聚焦于单个硬件模块——
+> 通过 Pull-based 依赖解析引擎协同工作。
+>
+> **不是 Claude Code 套壳。** CortexForge 使用 Claude Agent SDK + subprocess + TOML 文件状态总线。
+> Claude Code 是开发者 IDE，**不是**运行时。
 
-# CortexForge
-
-> MCU 嵌入式开发的 N 级递归 Agent 编排环境。
-
-CortexForge 是一个**平台无关**、基于文件总线的 Agent 编排环境。
-它让 Claude 能够 spawn 并管理一棵由专用 Agent 进程组成的树——每个进程聚焦于
-单个硬件模块（HAL、BSP、驱动、中间件、应用）——通过 pull-based 依赖解析引擎协同工作。
-
-**不是 Claude Code 套壳。** CortexForge 使用 Claude Agent SDK + subprocess + TOML
-文件状态总线。Claude Code 是开发者 IDE，**不是**运行时。
-
-## 快速开始
+### 快速开始
 
 ```bash
-# 1. 安装
-git clone https://github.com/Gyanano/cortexforge.git
-cd cortexforge
+git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
-# 2. 创建项目
+# 交互式项目向导 —— 选择 MCU、工具链、分层、描述模块
 cargo run -- forge init
 
-# 3. 用 Claude 完善骨架文件
+# 让 Claude 完善骨架文件
 export ANTHROPIC_API_KEY=sk-...
 claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
-# 4. 校验并运行
+# 校验配置并启动 Orchestrator
 cargo run -- forge validate
 cargo run -- forge run
 ```
 
-## 命令一览
-
-| 命令 | 说明 |
-|------|------|
-| `forge init` | 交互式项目向导——选择 MCU、工具链、分层、描述模块 |
-| `forge validate` | 校验 forge.toml + 所有 node.toml 文件 |
-| `forge run` | 启动 Orchestrator 守护进程（10-Pass 依赖解析 + 心跳监控） |
-| `forge status` | 树形展示所有节点状态（Unicode 状态图标） |
-| `forge node list/show` | 查看已声明的节点 |
-| `forge log` | 读取 NDJSON 事件总线（`--follow`, `--node`, `--event`, `--since`） |
-| `forge kill` | 终止节点或子树 |
-
-## 架构总览
+### 核心概念
 
 ```
 forge_root/
-  forge.toml                   # 全局配置 (§4.6)
+  forge.toml                     # 全局配置（max_depth、budget、heartbeat）
   .forge/
-    eventbus.log               # NDJSON 事件日志（Orchestrator 单写）
-    escalated.toml             # 跨层依赖路由表
+    eventbus.log                 # NDJSON 事件日志 —— 唯一写入者：Orchestrator
+    escalated.toml               # 跨层依赖路由表
   modules/
-    firmware/                  # L1 — Domain Agent
-      node.toml                # 节点定义 (§4.1)
-      verify.sh                # 验证闸门 (§8)
-      CLAUDE.md                # 模块方法论
-      .forge/
-        state.toml             # 状态机 + 心跳 (§4.2)
-        inbox/                 # 消息队列（目录即队列）
-      shared/
-        needs.toml             # "我需要什么"——pull-based 依赖发现
-        provides.toml          # "我能提供什么"——key → 值 + seq 版本
-        resolved.toml          # Orchestrator 写入的已匹配值
-        tasks.toml             # Orchestrator 写入的待处理任务
+    firmware/                    # L1 Domain Agent —— 管理子模块
+      node.toml                  # 静态定义：名称、角色、provides、children
+      verify.sh                  # 自验闸门（退出 0 = 通过）
+      CLAUDE.md                  # 模块方法论 & 工具链假设
+      .forge/state.toml          # 动态状态：8 态状态机、心跳、进度
+      .forge/inbox/              # 消息队列 —— 目录即队列，并发安全
+      shared/needs.toml          # "我需要什么" —— 开发过程中动态发现
+      shared/provides.toml       # "我能提供什么" —— key → 值 + seq 版本号
+      shared/resolved.toml       # Orchestrator 写入已匹配的依赖值
+      shared/tasks.toml          # Orchestrator 写入待处理的 provider 任务
       submodules/
-        hal-clock/             # L2 — Module Agent
-        bsp-uart/              # L2 — Module Agent
+        hal-clock/               # L2 Module Agent —— 提供 APB1_CLK、APB2_CLK
+        bsp-uart/                # L2 Module Agent —— 提供 UART_TX_PIN
 ```
-
-### 核心机制
 
 | 机制 | 说明 |
 |------|------|
 | **N 级递归树** | 每层使用同一 `spawn_child()` 函数；深度由 `forge.toml.max_depth` 约束 |
 | **8 态状态机** | `idle → assigned → planning → implementing ↔ blocked → verifying → delivered / dead` |
-| **Pull-based 依赖** | 模块开发过程中动态声明需求；Orchestrator 匹配 provider，自动解析 |
-| **10-Pass 依赖引擎** | 收集 → 建图 → 两次环检测 → 匹配 → spawn → 解析 → 传播 → 值变更 → 跨层 |
+| **Pull-based 依赖** | 模块开发中动态声明需求；Orchestrator 自动匹配 provider、解析值 |
+| **10-Pass 依赖引擎** | 收集 → 建图 → 两次环检测 → 匹配 → spawn → 解析 → 传播 → 值变更 → 跨层上报 |
 | **心跳 + TTL** | 每节点心跳文件；SHA256 进度 hash 卡死检测；坏枝传播 |
-| **verify.sh 闸门** | 每个模块自验；父只认 `state="delivered"` |
-| **TOML 文件总线** | 所有跨节点通信走 `.forge/` 目录协议——无 RPC、无消息队列 |
+| **verify.sh 闸门** | 每模块自验，父只认 `state="delivered"` |
+| **TOML 文件总线** | 全部跨节点通信走 `.forge/` 目录协议 —— 零 RPC、零消息队列 |
+| **权限与隔离** | 每节点 `realpath` 文件边界；Bash 白名单；网络控制；Spawn 权限收束 |
 
-## Crate 结构
+### CLI 命令
 
-| Crate | 用途 | 测试数 |
-|-------|------|--------|
-| `forge-core` | 类型、协议、状态机、Spawn、心跳、依赖引擎、事件总线、权限 | 82 |
-| `forge-cli` | `forge` 命令行工具 | — |
-| `forge-sdk` | 节点运行时：watchdog、verify 闸门、Prompt 构建 | 7 |
-| `mvp_tests` | 端到端 MVP 标准验证 | 9 |
+| 命令 | 说明 |
+|------|------|
+| `forge init` | 交互式向导：选 MCU、工具链、分层、写模块描述 → 生成骨架项目 |
+| `forge validate` | 校验 `forge.toml` + 所有 `node.toml` 的语法与语义 |
+| `forge run` | 启动 Orchestrator 守护进程：10-Pass 依赖解析 + 心跳监控循环 |
+| `forge status` | 树形展示节点状态（Unicode 图标 `○ ◕ ✅ ❌`）+ `--json` |
+| `forge node list` | 列出所有已声明节点 |
+| `forge node show <name>` | 查看节点详情：角色、深度、子节点、provides、运行时状态 |
+| `forge log` | 读取事件总线：`--node`、`--event`、`--since`、`--follow` |
+| `forge kill <node>` | 终止节点或子树：`--force`（跳过宽限期）、`--cascade`（递归） |
 
-**总计 98 项测试** | CI: [![CI](https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Gyanano/cortexforge/actions/workflows/ci.yml)
+### Crate 结构
 
-## MVP 验收结果 (§13)
+| Crate | 代码行数 | 测试数 | 用途 |
+|-------|---------|--------|------|
+| `forge-core` | ~7000 | 82 | 类型、10 种 TOML 协议、状态机、Spawn、心跳、10-Pass 依赖引擎、事件总线、权限、交付物 |
+| `forge-cli` | ~800 | — | `forge` 命令行：7 个子命令 + 交互式 init 向导 |
+| `forge-sdk` | ~700 | 7 | 节点运行时：watchdog 线程、verify 闸门、Prompt 构建 |
+| `mvp_tests` | ~480 | 9 | 端到端 MVP 验收标准验证 |
+| **合计** | **~9000** | **98** | |
 
-- ✅ 3 层 spawn 跑通
-- ✅ 递归对称（L0→L1 与 L1→L2 走同一段代码）
-- ✅ 心跳超时杀枝，兄弟节点不受影响
-- ✅ 依赖发现与解决
-- ✅ 循环依赖检测（DFS）
-- ✅ 坏枝传播
-- ✅ 崩溃恢复（PID 表重建）
-- ✅ 事件总线可重建任意节点完整生命周期
+### MVP 验收结果 (§13)
 
-## 文档
+| # | 标准 | 测试函数 | 状态 |
+|---|------|---------|------|
+| 1 | 3 层 spawn 跑通 | `mvp1_three_layer_spawn` | ✅ |
+| 2 | 递归对称（L0→L1 与 L1→L2 同一代码） | `mvp2_recursive_symmetry` | ✅ |
+| 3 | 心跳超时杀枝，兄弟不受影响 | `mvp3_heartbeat_timeout_detection` | ✅ |
+| 4 | 依赖发现与解析 | `mvp4_dependency_discovery_and_resolution` | ✅ |
+| 5 | 循环依赖检测 | `mvp5_cycle_detection` | ✅ |
+| 6 | 坏枝传播 | `mvp6_dead_branch_propagation` | ✅ |
+| 7 | 崩溃恢复（PID 表重建） | `mvp7_crash_recovery_pid_rebuild` | ✅ |
+| 8 | 事件总线可重建完整生命周期 | `mvp8_event_bus_reconstruction` | ✅ |
 
-- [`docs/01-architecture.md`](docs/01-architecture.md) — 唯一权威架构文档（1605 行，~30 轮评审，118 个修复点）
-- [`docs/02-implementation-status.md`](docs/02-implementation-status.md) — 实施状态报告、Crate 结构、关键 API 参考
-- [`CLAUDE.md`](CLAUDE.md) — 项目级长期记忆（Claude Code 自动加载）
+### 文档导航
 
-## 许可证
+| 文档 | 说明 |
+|------|------|
+| [`docs/01-architecture.md`](docs/01-architecture.md) | 唯一权威架构文档——1605 行，~30 轮评审，118 个追踪修复点 |
+| [`docs/02-implementation-status.md`](docs/02-implementation-status.md) | 实施状态报告、完整 Crate 结构、关键 API 参考 |
+| [`docs/archive/`](docs/archive/) | 历史评估报告（已归档） |
+| [`CLAUDE.md`](CLAUDE.md) | 项目级长期记忆（Claude Code 自动加载） |
 
-MIT
+### 运行要求
 
----
+- **Rust** 1.85+（edition 2024）
+- **Claude CLI**——`forge run` 需要它来 spawn `claude -p` 子进程
+- **ANTHROPIC_API_KEY**——设为环境变量
+- **macOS 或 Linux**——进程管理使用 POSIX 信号
 
-<p align="center">
-  <a href="#cortexforge">↑ English</a> &nbsp;|&nbsp;
-  <a href="#cortexforge-1">↑ 中文</a>
-</p>
+### 许可证
+
+MIT — 详见 [LICENSE](LICENSE)。
+
+<p align="right"><a href="README.md#cortexforge">↑ 回到顶部</a></p>
 
 ---
 
@@ -254,6 +269,10 @@ MIT
 
 <p align="center">
   <a href="https://www.star-history.com/#Gyanano/cortexforge&Date">
-    <img src="https://api.star-history.com/svg?repos=Gyanano/cortexforge&type=Date" alt="Star History Chart" width="600" />
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Gyanano/cortexforge&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Gyanano/cortexforge&type=Date" />
+      <img src="https://api.star-history.com/svg?repos=Gyanano/cortexforge&type=Date" alt="Star History Chart" width="600" />
+    </picture>
   </a>
 </p>
