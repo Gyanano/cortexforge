@@ -235,15 +235,17 @@ fn cmd_validate(root: &PathBuf) -> forge_core::error::ForgeResult<()> {
     Ok(())
 }
 
-fn cmd_run(_root: &PathBuf, daemon: bool) -> forge_core::error::ForgeResult<()> {
+fn cmd_run(root: &PathBuf, daemon: bool) -> forge_core::error::ForgeResult<()> {
+    use forge_core::orchestrator::Orchestrator;
+
     if daemon {
-        tracing::info!("daemon mode requested but not yet implemented");
+        tracing::info!("daemon mode requested but not yet implemented, running foreground");
         println!("Daemon mode not yet implemented. Running in foreground...");
     }
-    println!("Orchestrator starting...");
-    // TODO: Full orchestrator implementation in P7
+
+    let mut orch = Orchestrator::new(root)?;
     println!("Orchestrator running. Press Ctrl+C to stop.");
-    println!("(Orchestrator main loop not yet implemented)");
+    orch.run()?;
     Ok(())
 }
 

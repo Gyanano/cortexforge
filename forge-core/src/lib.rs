@@ -13,6 +13,7 @@ pub mod event;
 pub mod eventbus;
 pub mod heartbeat;
 pub mod logging;
+pub mod orchestrator;
 pub mod permission;
 pub mod protocol;
 pub mod spawn;
