@@ -24,7 +24,7 @@
 | P13 | 集成测试与 MVP 验收 | 10 | ✅ | 8 项 MVP 标准全部自动化验证 |
 | P14 | 文档回写与发布准备 | 8 | ✅ | CLAUDE.md 更新、CI、示例项目 |
 
-**14/14 阶段完成，153/153 子任务完成，96 tests 全绿（80 unit + 9 MVP + 7 SDK）。**
+**14/14 阶段完成，153/153 子任务完成，98 tests 全绿（82 unit + 9 MVP + 7 SDK）。**
 
 ---
 
@@ -200,7 +200,17 @@ impl EventBus {
 }
 ```
 
-### 3.7 Node SDK (`forge_sdk`)
+### 3.7 Orchestrator 守护进程 (`forge_core::orchestrator`)
+
+```rust
+impl Orchestrator {
+    pub fn new(root: &Path) -> ForgeResult<Self>;
+    pub fn run(&mut self) -> ForgeResult<()>;
+    // 内部 one_cycle: collect → Pass 1-9 → heartbeat → actions
+}
+```
+
+### 3.8 Node SDK (`forge_sdk`)
 
 ```rust
 impl NodeRuntime {
@@ -239,8 +249,8 @@ pub fn build_wake_prompt(name) -> String;                                  // §
 
 | 项目 | 说明 |
 |------|------|
-| `forge run` 主循环 | 目前为桩。需将 `DepGraph` + `HeartbeatMonitor` + `ProcessManager` 串联为 Orchestrator 守护进程 |
-| `forge kill` 实际实现 | 目前为桩。需实际发 kill 消息 → 等 grace_sec → SIGKILL |
+| ~~`forge run` 主循环~~ | ✅ 已完成 (`b785874`). Orchestrator 守护进程全功能运行 |
+| `forge kill` 实际实现 | Orchestrator 关闭时已有 kill 消息流程, 独立 `forge kill` 命令待完善 |
 | `forge status` 树形渲染 | 目前为桩。需读取全部节点 state 并树形展示 |
 | `forge log --follow` | tail 模式未实现 |
 | 真实 `claude -p` 集成 | 当前使用 mock 命令；生产需 Claude Agent SDK / CLI |
@@ -259,7 +269,7 @@ jobs:
     steps:
       - checkout + setup-rust-toolchain (stable, clippy, rustfmt)
       - cargo build --workspace
-      - cargo test --workspace              # 96 tests
+      - cargo test --workspace              # 98 tests
       - cargo clippy --workspace            # warn-only
       - cargo fmt --all -- --check
 ```
