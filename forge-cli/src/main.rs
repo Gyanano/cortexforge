@@ -707,7 +707,7 @@ fn cmd_status(root: &PathBuf, json: bool) -> forge_core::error::ForgeResult<()> 
     let roots: Vec<&String> = children_map
         .keys()
         .filter(|p| p.is_empty() || !node_info.contains_key(*p))
-        .filter_map(|p| children_map.get(p))
+        .flat_map(|p| children_map.get(p.as_str()).map(Vec::as_slice).unwrap_or(&[]))
         .collect();
 
     if json {
