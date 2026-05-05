@@ -19,25 +19,18 @@ CortexForge is a **platform-agnostic**, file-bus-based agent orchestration envir
 git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
-# Interactive project wizard — select MCU, toolchain, layers, describe modules
+# Interactive project wizard — auto-fleshes skeletons via DeepSeek if key is configured
 cargo run -- init
-
-# Have an LLM flesh out the skeleton files
-# Option A: DeepSeek API (cheapest, ~$0.01 per project)
-export DEEPSEEK_API_KEY=sk-...
-curl -s https://api.deepseek.com/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
-  -d "$(jq -n --arg prompt "$(cat .forge/FLESH_OUT_PROMPT.md)" \
-    '{model:"deepseek-chat",messages:[{role:"user",content:$prompt}]}')"
-
-# Option B: Claude CLI (if installed and logged in via `claude login`)
-claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
 # Validate & run the orchestrator
 cargo run -- validate
 cargo run -- run
 ```
+
+The wizard saves your DeepSeek API key in `forge.toml` → `[llm]` section, so different
+projects can use different keys. If no key is found in `forge.toml`, the wizard falls
+back to the `DEEPSEEK_API_KEY` environment variable (with a warning). Manual flesh-out
+is still available via the prompt at `.forge/FLESH_OUT_PROMPT.md`.
 
 ## Architecture
 
@@ -124,7 +117,7 @@ forge_root/
 
 - **Rust** 1.85+ (edition 2024)
 - **Claude CLI** — the `claude` command must be installed and logged in (`claude login`). The orchestrator spawns `claude -p` child processes as agent runtimes. No API key needed — authentication is handled by Claude CLI's local session.
-- **LLM API key (optional)** — only needed for the one-time flesh-out step during `forge init`. DeepSeek API key is recommended for cost (~$0.01/project). Any OpenAI-compatible API works.
+- **DeepSeek API key (optional)** — for the one-time auto-flesh-out step during `forge init`. Stored per-project in `forge.toml` → `[llm]` section so different projects can use different keys without polluting your global environment. Falls back to `DEEPSEEK_API_KEY` env var with a warning.
 - **macOS or Linux** — process management uses POSIX signals
 
 ## License

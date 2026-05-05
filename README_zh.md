@@ -19,25 +19,17 @@ CortexForge 是一个**平台无关**、基于文件总线的 Agent 编排环境
 git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
-# 交互式项目向导 —— 选择 MCU、工具链、分层、描述模块
+# 交互式项目向导 —— 若已配置 Key 则自动通过 DeepSeek 完善骨架文件
 cargo run -- init
-
-# 使用 LLM 完善骨架文件
-# 方案 A：DeepSeek API（推荐，成本最低 ~¥0.07/项目）
-export DEEPSEEK_API_KEY=sk-...
-curl -s https://api.deepseek.com/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
-  -d "$(jq -n --arg prompt "$(cat .forge/FLESH_OUT_PROMPT.md)" \
-    '{model:"deepseek-chat",messages:[{role:"user",content:$prompt}]}')"
-
-# 方案 B：Claude CLI（已安装并通过 claude login 登录）
-claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
 # 校验配置并启动 Orchestrator
 cargo run -- validate
 cargo run -- run
 ```
+
+向导会将你的 DeepSeek API Key 存入 `forge.toml` → `[llm]` 段，不同项目
+可使用不同 Key。若 `forge.toml` 中未找到 Key，向导会回退到 `DEEPSEEK_API_KEY`
+环境变量（并显示警告）。手动完善仍可通过 `.forge/FLESH_OUT_PROMPT.md` 完成。
 
 ## 架构概览
 
@@ -124,7 +116,7 @@ forge_root/
 
 - **Rust** 1.85+（edition 2024）
 - **Claude CLI**——必须安装 `claude` 命令并通过 `claude login` 登录。Orchestrator 会 spawn `claude -p` 子进程作为 Agent 运行时，无需额外 API Key，认证由 Claude CLI 本地会话完成。
-- **LLM API Key（可选）**——仅 `forge init` 后的一次性骨架完善步骤需要。推荐 DeepSeek API Key（约 ¥0.07/项目），任何兼容 OpenAI 接口的 API 均可。
+- **DeepSeek API Key（可选）**——仅 `forge init` 中的一次性自动骨架完善需要。存储在 `forge.toml` → `[llm]` 段，项目间互不干扰，无需污染全局环境变量。未配置时回退到 `DEEPSEEK_API_KEY` 环境变量并显示警告。
 - **macOS 或 Linux**——进程管理使用 POSIX 信号
 
 ## 许可证

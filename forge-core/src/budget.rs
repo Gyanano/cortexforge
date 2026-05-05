@@ -83,6 +83,7 @@ mod tests {
                 }],
             },
             paths: PathsSection::default(),
+            llm: Default::default(),
         }
     }
 

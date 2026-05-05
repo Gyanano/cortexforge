@@ -35,6 +35,7 @@ fn test_config() -> ForgeConfig {
         },
         budget: BudgetSection::default(),
         paths: PathsSection::default(),
+        llm: Default::default(),
     }
 }
 

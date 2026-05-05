@@ -10,6 +10,8 @@ pub struct ForgeConfig {
     pub budget: BudgetSection,
     #[serde(default)]
     pub paths: PathsSection,
+    #[serde(default)]
+    pub llm: LlmSection,
 }
 
 /// Minimal struct to hold a forge root path and provide sub-path builders.
@@ -121,6 +123,16 @@ impl Default for GlobalBudget {
     fn default() -> Self {
         Self { max_tokens_total: Some(5_000_000), max_wallclock_total_sec: Some(14400) }
     }
+}
+
+/// LLM configuration section — API keys stored per-project (not in environment).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LlmSection {
+    /// DeepSeek API key for the flesh-out step during `forge init`.
+    /// Stored per-project so different projects can use different keys.
+    /// If absent, falls back to DEEPSEEK_API_KEY env var (with a warning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deepseek_api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

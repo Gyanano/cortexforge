@@ -139,17 +139,21 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     println!("Root:    {}", root.display());
     println!();
 
-    // ── Step 2: DeepSeek API key (for auto-flesh-out) ──
+    // ── Step 2: DeepSeek API key (project-local, stored in forge.toml [llm]) ──
     let deepseek_key: Option<String> = {
-        let env_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
-        if !env_key.is_empty() {
-            println!("✓ DEEPSEEK_API_KEY found in environment.\n");
-            Some(env_key)
+        // Try reading from existing forge.toml first (re-init scenario)
+        let existing_key = resolve_deepseek_key(root);
+        if let Some(ref key) = existing_key {
+            println!("✓ DeepSeek API key found in forge.toml [llm] section.\n");
+            Some(key.clone())
         } else {
-            println!("💡 DeepSeek API key — needed to auto-flesh-out skeleton files after init.");
+            println!("💡 DeepSeek API key — used to auto-flesh-out skeleton files after init.");
+            println!(
+                "   The key is stored in forge.toml so different projects can use different keys."
+            );
             println!("   Get one at https://platform.deepseek.com (cheapest, ~$0.01/project).");
             println!(
-                "   Enter your key now, or leave blank to skip (you can run flesh-out later):"
+                "   Enter your key (leave blank to skip; you can add it to forge.toml later):"
             );
             print!("   DEEPSEEK_API_KEY: ");
             use std::io::Write;
@@ -158,13 +162,11 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
             std::io::stdin().read_line(&mut input).ok();
             let key = input.trim().to_string();
             if key.is_empty() {
-                println!(
-                    "  → Skipped. You can set DEEPSEEK_API_KEY and re-run, or flesh out manually.\n"
-                );
+                println!("  → Skipped. You can add it later in forge.toml → [llm] section.\n");
                 None
             } else {
                 println!(
-                    "  → Got key {}.\n",
+                    "  → Will save key {} to forge.toml [llm] section.\n",
                     if key.len() > 6 {
                         format!("{}...{}", &key[..4], &key[key.len() - 4..])
                     } else {
@@ -211,8 +213,8 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     std::fs::create_dir_all(root.join("modules"))?;
     std::fs::create_dir_all(root.join(".forge"))?;
 
-    // Write forge.toml
-    let forge_toml = build_forge_toml(&mcu, &toolchain);
+    // Write forge.toml (with API key in [llm] section if provided)
+    let forge_toml = build_forge_toml(&mcu, &toolchain, deepseek_key.as_deref());
     let forge_toml_path = root.join("forge.toml");
     forge_core::atomic_write(&forge_toml_path, &forge_toml)?;
     println!("Created {}", forge_toml_path.display());
@@ -243,7 +245,7 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     // Write .gitignore
     let gitignore = root.join(".gitignore");
     let existing = std::fs::read_to_string(&gitignore).unwrap_or_default();
-    let additions = "\n# CortexForge runtime artifacts\n.forge/eventbus.log\n**/.forge/stdout.log\n**/.forge/stderr.log\n**/.forge/inbox/processed/\n";
+    let additions = "\n# CortexForge runtime artifacts\n.forge/eventbus.log\n**/.forge/stdout.log\n**/.forge/stderr.log\n**/.forge/inbox/processed/\n# IMPORTANT: if you set deepseek_api_key in forge.toml [llm], add forge.toml to .gitignore\n# or use DEEPSEEK_API_KEY env var instead (a warning will be shown).\n";
     if !existing.contains(".forge/eventbus.log") {
         std::fs::write(&gitignore, format!("{existing}{additions}"))?;
     }
@@ -298,8 +300,10 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     } else {
         println!("Next steps:");
         println!("  1. Review forge.toml and skeleton node.toml files");
-        println!("  2. Flesh out skeletons (DeepSeek API recommended, ~$0.01):");
-        println!("     export DEEPSEEK_API_KEY=sk-...");
+        println!("  2. Add your DeepSeek API key to forge.toml:");
+        println!("       [llm]");
+        println!("       deepseek_api_key = \"sk-...\"");
+        println!("     Then re-run `forge init` to auto-flesh-out, or use curl manually:");
         println!("     curl -s https://api.deepseek.com/v1/chat/completions \\");
         println!("       -H \"Content-Type: application/json\" \\");
         println!("       -H \"Authorization: Bearer \\$DEEPSEEK_API_KEY\" \\");
@@ -307,8 +311,6 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
         println!(
             "         '{{model:\"deepseek-chat\",messages:[{{role:\"user\",content:\\$prompt}}]}}')\""
         );
-        println!();
-        println!("     Or re-run: forge init (with DEEPSEEK_API_KEY set)");
         println!("  3. forge validate  — check everything is correct");
         println!("  4. forge run       — start the orchestrator");
     }
@@ -406,7 +408,23 @@ const EMBEDDED_LAYERS: &[(char, &str, &str)] = &[
 
 // ─── forge.toml builder ─────────────────────────────────────────────────
 
-fn build_forge_toml(mcu: &str, toolchain: &str) -> String {
+fn build_forge_toml(mcu: &str, toolchain: &str, deepseek_key: Option<&str>) -> String {
+    let llm_section = if let Some(key) = deepseek_key {
+        format!(
+            "# DeepSeek API key for auto-fleshing out skeleton files during `forge init`.\n\
+             # Stored per-project — different projects can use different keys.\n\
+             # If absent, falls back to DEEPSEEK_API_KEY env var.\n\
+             [llm]\n\
+             deepseek_api_key = \"{key}\"\n"
+        )
+    } else {
+        String::from(
+            "# To enable auto-flesh-out during `forge init`, add your DeepSeek API key here:\n\
+             # [llm]\n\
+             # deepseek_api_key = \"sk-...\"\n",
+        )
+    };
+
     format!(
         r#"# CortexForge project configuration
 # Target: {mcu} / {toolchain}
@@ -447,7 +465,8 @@ model = "claude-haiku-4-5"
 [paths]
 event_bus = ".forge/eventbus.log"
 escalated = ".forge/escalated.toml"
-"#
+
+{llm_section}"#
     )
 }
 
@@ -648,6 +667,54 @@ CRITICAL: Use exactly "=== filename ===" markers. Write production-quality,
 MCU-accurate configurations. No placeholder text.
 "#
     )
+}
+
+// ─── DeepSeek API key resolution ──────────────────────────────────────────
+
+/// Resolve the DeepSeek API key with project-local priority:
+/// 1. `forge.toml` → `[llm].deepseek_api_key` (per-project, no cross-project leakage)
+/// 2. `DEEPSEEK_API_KEY` env var (fallback, with a clear warning)
+///
+/// This avoids polluting the user's global environment and lets different
+/// projects use different API keys without conflict.
+fn resolve_deepseek_key(root: &std::path::Path) -> Option<String> {
+    // ── Priority 1: forge.toml [llm] section ──
+    let forge_toml_path = root.join("forge.toml");
+    if forge_toml_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&forge_toml_path) {
+            if let Ok(config) = toml::from_str::<ForgeConfig>(&content) {
+                if let Some(ref key) = config.llm.deepseek_api_key {
+                    if !key.is_empty() {
+                        return Some(key.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Priority 2: DEEPSEEK_API_KEY env var (with warning) ──
+    if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+        if !key.is_empty() {
+            eprintln!();
+            eprintln!("┌─────────────────────────────────────────────────────────────┐");
+            eprintln!("│ ⚠  DeepSeek API Key 来源: 系统环境变量                       │");
+            eprintln!("│                                                             │");
+            eprintln!("│   因为我在 forge.toml 的 [llm] 中没有找到可用的 Key，         │");
+            eprintln!("│   所以现在使用的是你系统环境变量中的 DEEPSEEK_API_KEY。        │");
+            eprintln!("│                                                             │");
+            eprintln!("│   请注意: 这意味着所有 CortexForge 项目都会共用这个 Key。      │");
+            eprintln!("│   如果不同项目需要使用不同的 Key，请在 forge.toml 中添加:      │");
+            eprintln!("│     [llm]                                                    │");
+            eprintln!("│     deepseek_api_key = \"sk-...\"                              │");
+            eprintln!("│                                                             │");
+            eprintln!("│   以免造成额外花费时产生不快。                                │");
+            eprintln!("└─────────────────────────────────────────────────────────────┘");
+            eprintln!();
+            return Some(key);
+        }
+    }
+
+    None
 }
 
 // ─── DeepSeek API integration ─────────────────────────────────────────────

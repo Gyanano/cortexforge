@@ -653,6 +653,7 @@ mod tests {
             },
             budget: BudgetSection::default(),
             paths: PathsSection::default(),
+            llm: Default::default(),
         }
     }
 
