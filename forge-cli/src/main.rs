@@ -139,39 +139,41 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     println!("Root:    {}", root.display());
     println!();
 
-    // ── Step 2: API key ──
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .or_else(|_| std::env::var("CLAUDE_API_KEY"))
-        .unwrap_or_default();
-    let api_ready = if api_key.is_empty() {
-        println!("⚠  No ANTHROPIC_API_KEY or CLAUDE_API_KEY found in environment.");
-        println!("  Set it before running 'forge run', or enter it now (leave blank to skip):");
-        print!("  API Key: ");
-        use std::io::Write;
-        let _ = std::io::stdout().flush();
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).ok();
-        let key = input.trim().to_string();
-        if key.is_empty() {
-            println!("  → Skipped. Set ANTHROPIC_API_KEY before forge run.\n");
-            false
+    // ── Step 2: DeepSeek API key (for auto-flesh-out) ──
+    let deepseek_key: Option<String> = {
+        let env_key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
+        if !env_key.is_empty() {
+            println!("✓ DEEPSEEK_API_KEY found in environment.\n");
+            Some(env_key)
         } else {
-            // Store key in a static for later use (set_var is unsafe in 2024 edition)
-            // The key is stored in the forge.toml path, or passed via environment
-            // For now, just warn: the user should export ANTHROPIC_API_KEY
+            println!("💡 DeepSeek API key — needed to auto-flesh-out skeleton files after init.");
+            println!("   Get one at https://platform.deepseek.com (cheapest, ~$0.01/project).");
             println!(
-                "  → Note: please export ANTHROPIC_API_KEY={} before forge run.\n",
-                if key.len() > 4 {
-                    format!("{}...{}", &key[..2], &key[key.len() - 2..])
-                } else {
-                    "****".into()
-                }
+                "   Enter your key now, or leave blank to skip (you can run flesh-out later):"
             );
-            true
+            print!("   DEEPSEEK_API_KEY: ");
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).ok();
+            let key = input.trim().to_string();
+            if key.is_empty() {
+                println!(
+                    "  → Skipped. You can set DEEPSEEK_API_KEY and re-run, or flesh out manually.\n"
+                );
+                None
+            } else {
+                println!(
+                    "  → Got key {}.\n",
+                    if key.len() > 6 {
+                        format!("{}...{}", &key[..4], &key[key.len() - 4..])
+                    } else {
+                        "****".into()
+                    }
+                );
+                Some(key)
+            }
         }
-    } else {
-        println!("✓ API key found in environment.\n");
-        true
     };
 
     // ── Step 3: MCU selection ──
@@ -246,32 +248,70 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
         std::fs::write(&gitignore, format!("{existing}{additions}"))?;
     }
 
-    // ── Step 8: Generate flesh-out prompt ──
+    // ── Step 8: Generate flesh-out prompt + auto-flesh-out via DeepSeek ──
     let prompt_path = root.join(".forge/FLESH_OUT_PROMPT.md");
     let prompt = build_flesh_out_prompt(
         &project_name,
         &mcu,
         &toolchain,
-        api_ready,
+        deepseek_key.is_some(),
         &layers,
         &layer_descriptions,
     );
     std::fs::write(&prompt_path, &prompt)?;
 
+    let mut auto_fleshed = false;
+    if let Some(ref key) = deepseek_key {
+        println!();
+        println!("Calling DeepSeek API to flesh out skeleton files...");
+        println!("  (This takes ~15-30 seconds, cost ~$0.01)");
+        match call_deepseek_flesh_out(key, &prompt) {
+            Ok(response) => match apply_flesh_out_response(root, &response) {
+                Ok(count) => {
+                    println!("✓ DeepSeek wrote {count} files successfully.");
+                    auto_fleshed = true;
+                }
+                Err(e) => {
+                    println!("⚠ Failed to parse DeepSeek response: {e}");
+                    println!(
+                        "  The prompt is saved at .forge/FLESH_OUT_PROMPT.md — you can process it manually."
+                    );
+                }
+            },
+            Err(e) => {
+                println!("⚠ DeepSeek API call failed: {e}");
+                println!(
+                    "  The prompt is saved at .forge/FLESH_OUT_PROMPT.md — you can process it manually."
+                );
+            }
+        }
+    }
+
     println!();
     println!("Project '{project_name}' initialized successfully.");
     println!();
-    println!("Next steps:");
-    println!("  1. Review forge.toml and skeleton node.toml files");
-    println!("  2. Set ANTHROPIC_API_KEY (if not done)");
-    println!(
-        "  3. Run: claude -p \"$(cat .forge/FLESH_OUT_PROMPT.md)\" --dangerously-skip-permissions"
-    );
-    println!(
-        "     This will use Claude to flesh out verify.sh, CLAUDE.md, and complete node.toml files."
-    );
-    println!("  4. forge validate  — check everything is correct");
-    println!("  5. forge run       — start the orchestrator");
+    if auto_fleshed {
+        println!("Next steps:");
+        println!("  1. Review the generated files (node.toml, verify.sh, CLAUDE.md, etc.)");
+        println!("  2. forge validate  — check everything is correct");
+        println!("  3. forge run       — start the orchestrator");
+    } else {
+        println!("Next steps:");
+        println!("  1. Review forge.toml and skeleton node.toml files");
+        println!("  2. Flesh out skeletons (DeepSeek API recommended, ~$0.01):");
+        println!("     export DEEPSEEK_API_KEY=sk-...");
+        println!("     curl -s https://api.deepseek.com/v1/chat/completions \\");
+        println!("       -H \"Content-Type: application/json\" \\");
+        println!("       -H \"Authorization: Bearer \\$DEEPSEEK_API_KEY\" \\");
+        println!("       -d \"\\$(jq -n --arg prompt \"\\$(cat .forge/FLESH_OUT_PROMPT.md)\" \\");
+        println!(
+            "         '{{model:\"deepseek-chat\",messages:[{{role:\"user\",content:\\$prompt}}]}}')\""
+        );
+        println!();
+        println!("     Or re-run: forge init (with DEEPSEEK_API_KEY set)");
+        println!("  3. forge validate  — check everything is correct");
+        println!("  4. forge run       — start the orchestrator");
+    }
     Ok(())
 }
 
@@ -461,14 +501,15 @@ fn build_flesh_out_prompt(
 
     let layers_str = layers.join(", ");
     let api_note = if api_ready {
-        "API key is configured and ready for use."
+        "DeepSeek API key is configured. Processing this prompt automatically."
     } else {
-        "⚠ API key is NOT configured. The user must set ANTHROPIC_API_KEY before running forge run."
+        "⚠ No DeepSeek API key configured. The user will process this prompt manually."
     };
 
     format!(
-        r#"You are assisting with a CortexForge MCU embedded project. Your job is to flesh out the
-skeleton node.toml files, create verify.sh scripts, and write per-module CLAUDE.md files.
+        r#"You are DeepSeek, processing a CortexForge MCU embedded project initialization prompt.
+Your job is to flesh out skeleton node.toml files, create verify.sh scripts, and write
+per-module CLAUDE.md files with production-quality, MCU-accurate configurations.
 
 ## Project Context
 - Project name: {project_name}
@@ -483,11 +524,11 @@ skeleton node.toml files, create verify.sh scripts, and write per-module CLAUDE.
 ## CortexForge Architecture Reference
 
 ### Directory Layout
-Each module lives in its own directory under `modules/<name>/`:
+Each module lives under `modules/<name>/`:
 ```
 modules/<name>/
-  node.toml         — static node definition (§4.1)
-  verify.sh         — verification script (§8)
+  node.toml         — static node definition
+  verify.sh         — verification script (exit 0 = pass)
   CLAUDE.md         — module-level methodology & toolchain notes
   .forge/           — runtime state (created by SDK at startup)
     state.toml
@@ -500,7 +541,7 @@ modules/<name>/
   deliverables/     — build outputs after verify passes
 ```
 
-### node.toml Format (§4.1)
+### node.toml Format
 ```toml
 [node]
 name = "<unique-name>"           # e.g. "hal-clock", "bsp-uart", "driver-ws2812"
@@ -515,7 +556,7 @@ spawn_strategy = "lazy"           # lazy (on-demand) | eager (at start)
 
 [provides]
 declared = ["INTERFACE_KEY_1", "INTERFACE_KEY_2"]
-# Interface keys are UPPER_SNAKE_CASE identifiers that other modules can depend on.
+# UPPER_SNAKE_CASE identifiers other modules can depend on.
 # Examples: APB1_CLK, UART1_TX_PIN, TIM2_CH1_PWM, SPI1_SCK_PIN
 
 [budget]
@@ -525,25 +566,22 @@ max_retries = 3
 max_subprocess = 4
 
 [runtime]
-model = "claude-sonnet-4-6"
+model = "claude-sonnet-4-6"      # Claude model used by spawned agent at runtime
 ```
 
-### verify.sh Requirements (§8)
+### verify.sh Requirements
 - Must be executable (`chmod +x verify.sh`)
 - Exit code 0 = pass, non-zero = fail
 - Should compile the module, run unit tests, check static analysis, verify
   memory/flash constraints, and validate public interface compatibility
-- Output failure details to stdout/stderr
 
 Example for {toolchain}:
 ```sh
 #!/bin/sh
 set -e
 echo "[<module>] building..."
-# Add compile command here, e.g.:
 # arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -std=c11 -Wall -Werror -c src/*.c
 echo "[<module>] running tests..."
-# Add test commands here
 echo "[<module>] verify PASS"
 ```
 
@@ -552,46 +590,45 @@ Each module's CLAUDE.md should document:
 1. Toolchain assumptions (compiler, flags, linker script)
 2. MCU-specific details (register maps, clock tree, peripheral config)
 3. Coding conventions used in this module
-4. Dependencies on other modules (but do NOT duplicate needs.toml)
+4. Dependencies on other modules (do NOT duplicate needs.toml)
 5. Test methodology (how to run verify.sh locally)
 
-### Dependency Protocol (§15)
+### Dependency Protocol
 - Modules declare needs in shared/needs.toml (interface keys like APB1_CLK)
 - Modules declare provides in shared/provides.toml
 - Orchestrator matches needs → provides and writes resolved values
-- Key naming convention: UPPER_SNAKE_CASE, include peripheral instance number
+- Key naming: UPPER_SNAKE_CASE with peripheral instance number
   (e.g. UART1_TX_PIN vs UART2_TX_PIN)
 
-### Role Definitions (§2.2)
-- **domain**: Manages a group of sub-modules, requests child spawn,
-  aggregates child states. Only domain agents can request spawn.
+### Role Definitions
+- **domain**: Manages sub-modules, requests child spawn, aggregates child states.
+  Only domain agents can request spawn.
 - **module**: Implements a specific hardware/software module. No spawn authority.
 - **submodule**: Same as module, for deeper nesting.
 
 ## Your Task
 
-For each module described in the user descriptions above:
+For each module in the user descriptions above:
 
 1. **Complete node.toml**: Fill in `provides.declared` with concrete interface keys
-   based on what this module offers. Use the MCU datasheet knowledge for {mcu}
+   based on what this module offers. Use MCU datasheet knowledge for {mcu}
    (e.g., STM32F1 clock tree: APB1 max 36MHz, APB2 max 72MHz).
    Fill in `children.declared` if the module needs sub-modules.
 
-2. **Create verify.sh**: Write a verification script appropriate for {toolchain}
-   and {mcu}. Include compile commands, basic test structure, and an exit 0 at the end.
+2. **Create verify.sh**: Write a verification script for {toolchain} + {mcu}.
+   Include compile commands, basic test structure, and an exit 0 at the end.
 
 3. **Create CLAUDE.md**: Document toolchain assumptions, register maps,
-   peripheral configuration, and coding conventions specific to this module.
+   peripheral configuration, and coding conventions for this module.
 
-4. **Define dependencies**: Based on the module descriptions, determine what
-   interface keys each module needs (write to shared/needs.toml) and what it
-   provides (write to shared/provides.toml with seq=1).
+4. **Define dependencies**: Determine what interface keys each module needs
+   (write to shared/needs.toml) and what it provides (write to
+   shared/provides.toml with seq=1).
 
 ## Output Format
 
-For each module, output the complete file contents in this format:
+For each module, output complete file contents in EXACTLY this format:
 
-```
 === modules/<name>/node.toml ===
 <complete node.toml>
 
@@ -606,12 +643,109 @@ For each module, output the complete file contents in this format:
 
 === modules/<name>/shared/provides.toml ===
 <complete provides.toml with seq=1, or "NONE" if nothing to provide>
-```
 
-Write real files to disk under the project root. Do NOT output placeholder
-text — write production-quality, MCU-accurate configurations.
+CRITICAL: Use exactly "=== filename ===" markers. Write production-quality,
+MCU-accurate configurations. No placeholder text.
 "#
     )
+}
+
+// ─── DeepSeek API integration ─────────────────────────────────────────────
+
+/// Call DeepSeek API to flesh out skeleton files. Returns the response content text.
+fn call_deepseek_flesh_out(api_key: &str, prompt: &str) -> Result<String, String> {
+    let body = serde_json::json!({
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 8192
+    });
+
+    let child = std::process::Command::new("curl")
+        .arg("-s")
+        .arg("--max-time")
+        .arg("120")
+        .arg("https://api.deepseek.com/v1/chat/completions")
+        .arg("-H")
+        .arg("Content-Type: application/json")
+        .arg("-H")
+        .arg(format!("Authorization: Bearer {api_key}"))
+        .arg("-d")
+        .arg(body.to_string())
+        .output()
+        .map_err(|e| format!("failed to run curl: {e}"))?;
+
+    if !child.status.success() {
+        let stderr = String::from_utf8_lossy(&child.stderr);
+        return Err(format!("curl exited with error: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&child.stdout);
+    let response: serde_json::Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("invalid JSON response: {e}"))?;
+
+    // Check for API-level errors
+    if let Some(err) = response.get("error") {
+        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("unknown API error");
+        return Err(format!("DeepSeek API error: {msg}"));
+    }
+
+    response["choices"][0]["message"]["content"]
+        .as_str()
+        .map(String::from)
+        .ok_or_else(|| "no content in DeepSeek response".to_string())
+}
+
+/// Parse the flesh-out response and write each section to its target file.
+/// Returns the number of files written.
+fn apply_flesh_out_response(
+    root: &std::path::Path,
+    response: &str,
+) -> forge_core::error::ForgeResult<usize> {
+    let mut count = 0usize;
+    let mut current_path: Option<std::path::PathBuf> = None;
+    let mut current_content = String::new();
+
+    for line in response.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("=== ") && trimmed.ends_with(" ===") {
+            // Flush previous file
+            if let Some(ref path) = current_path {
+                if !current_content.trim().is_empty() {
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(path, current_content.trim())?;
+                    count += 1;
+                }
+            }
+            // Start new file
+            let relative = trimmed
+                .strip_prefix("=== ")
+                .and_then(|s| s.strip_suffix(" ==="))
+                .unwrap_or(trimmed);
+            current_path = Some(root.join(relative));
+            current_content = String::new();
+        } else {
+            current_content.push_str(line);
+            current_content.push('\n');
+        }
+    }
+
+    // Flush last file
+    if let Some(ref path) = current_path {
+        if !current_content.trim().is_empty() {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, current_content.trim())?;
+            count += 1;
+        }
+    }
+
+    Ok(count)
 }
 
 fn cmd_validate(root: &PathBuf) -> forge_core::error::ForgeResult<()> {

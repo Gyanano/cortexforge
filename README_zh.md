@@ -20,15 +20,23 @@ git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
 # 交互式项目向导 —— 选择 MCU、工具链、分层、描述模块
-cargo run -- forge init
+cargo run -- init
 
-# 让 Claude 完善骨架文件
-export ANTHROPIC_API_KEY=sk-...
+# 使用 LLM 完善骨架文件
+# 方案 A：DeepSeek API（推荐，成本最低 ~¥0.07/项目）
+export DEEPSEEK_API_KEY=sk-...
+curl -s https://api.deepseek.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  -d "$(jq -n --arg prompt "$(cat .forge/FLESH_OUT_PROMPT.md)" \
+    '{model:"deepseek-chat",messages:[{role:"user",content:$prompt}]}')"
+
+# 方案 B：Claude CLI（已安装并通过 claude login 登录）
 claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
 # 校验配置并启动 Orchestrator
-cargo run -- forge validate
-cargo run -- forge run
+cargo run -- validate
+cargo run -- run
 ```
 
 ## 架构概览
@@ -115,8 +123,8 @@ forge_root/
 ## 运行要求
 
 - **Rust** 1.85+（edition 2024）
-- **Claude CLI**——`forge run` 需要它来 spawn `claude -p` 子进程
-- **ANTHROPIC_API_KEY**——设为环境变量
+- **Claude CLI**——必须安装 `claude` 命令并通过 `claude login` 登录。Orchestrator 会 spawn `claude -p` 子进程作为 Agent 运行时，无需额外 API Key，认证由 Claude CLI 本地会话完成。
+- **LLM API Key（可选）**——仅 `forge init` 后的一次性骨架完善步骤需要。推荐 DeepSeek API Key（约 ¥0.07/项目），任何兼容 OpenAI 接口的 API 均可。
 - **macOS 或 Linux**——进程管理使用 POSIX 信号
 
 ## 许可证

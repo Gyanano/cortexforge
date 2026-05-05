@@ -20,15 +20,23 @@ git clone https://github.com/Gyanano/cortexforge.git && cd cortexforge
 cargo build --release
 
 # Interactive project wizard — select MCU, toolchain, layers, describe modules
-cargo run -- forge init
+cargo run -- init
 
-# Have Claude flesh out skeleton files
-export ANTHROPIC_API_KEY=sk-...
+# Have an LLM flesh out the skeleton files
+# Option A: DeepSeek API (cheapest, ~$0.01 per project)
+export DEEPSEEK_API_KEY=sk-...
+curl -s https://api.deepseek.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  -d "$(jq -n --arg prompt "$(cat .forge/FLESH_OUT_PROMPT.md)" \
+    '{model:"deepseek-chat",messages:[{role:"user",content:$prompt}]}')"
+
+# Option B: Claude CLI (if installed and logged in via `claude login`)
 claude -p "$(cat .forge/FLESH_OUT_PROMPT.md)" --dangerously-skip-permissions
 
 # Validate & run the orchestrator
-cargo run -- forge validate
-cargo run -- forge run
+cargo run -- validate
+cargo run -- run
 ```
 
 ## Architecture
@@ -115,8 +123,8 @@ forge_root/
 ## Requirements
 
 - **Rust** 1.85+ (edition 2024)
-- **Claude CLI** — for `forge run` to spawn `claude -p` child processes
-- **ANTHROPIC_API_KEY** — set as environment variable
+- **Claude CLI** — the `claude` command must be installed and logged in (`claude login`). The orchestrator spawns `claude -p` child processes as agent runtimes. No API key needed — authentication is handled by Claude CLI's local session.
+- **LLM API key (optional)** — only needed for the one-time flesh-out step during `forge init`. DeepSeek API key is recommended for cost (~$0.01/project). Any OpenAI-compatible API works.
 - **macOS or Linux** — process management uses POSIX signals
 
 ## License
