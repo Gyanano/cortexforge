@@ -175,15 +175,15 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     };
 
     // ── Step 3: MCU selection ──
-    let mcu = select_option("Select target MCU family:", &MCU_OPTIONS);
+    let mcu = select_option("Select target MCU family:", MCU_OPTIONS);
     println!();
 
     // ── Step 4: Toolchain ──
-    let toolchain = select_option("Select build system / toolchain:", &TOOLCHAIN_OPTIONS);
+    let toolchain = select_option("Select build system / toolchain:", TOOLCHAIN_OPTIONS);
     println!();
 
     // ── Step 5: Standard layers ──
-    let layers = select_layers(&EMBEDDED_LAYERS);
+    let layers = select_layers(EMBEDDED_LAYERS);
     println!();
 
     // ── Step 6: Module descriptions per layer ──
@@ -218,9 +218,8 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     // Create skeleton node.toml files for each layer with description
     for (layer, desc) in &layer_descriptions {
         let parts: Vec<&str> = desc.split_whitespace().collect();
-        let module_name = parts
-            .first()
-            .map_or(layer.as_str(), |s| if s.ends_with(':') { &s[..s.len() - 1] } else { s });
+        let module_name =
+            parts.first().map_or(layer.as_str(), |s| s.strip_suffix(':').unwrap_or(s));
         let sanitized = module_name.replace(['/', '\\', ' '], "-");
         let dir = root.join("modules").join(&sanitized);
         std::fs::create_dir_all(dir.join(".forge"))?;
@@ -413,14 +412,14 @@ escalated = ".forge/escalated.toml"
 }
 
 fn build_skeleton_node_toml(name: &str, layer: &str) -> String {
-    let role = if layer == "hal" || layer == "bsp" { "module" } else { "module" };
+    let _role = layer; // all skeleton nodes default to module role
     format!(
         r#"# Skeleton node.toml — complete this file using the flesh-out prompt.
 # See docs/01-architecture.md §4.1 for full syntax.
 
 [node]
 name = "{name}"
-role = "{role}"
+role = "module"
 cwd = "modules/{name}"
 parent = ""
 depth = 1
@@ -708,7 +707,7 @@ fn cmd_status(root: &PathBuf, json: bool) -> forge_core::error::ForgeResult<()> 
     let roots: Vec<&String> = children_map
         .keys()
         .filter(|p| p.is_empty() || !node_info.contains_key(*p))
-        .flat_map(|p| children_map.get(p).unwrap())
+        .filter_map(|p| children_map.get(p))
         .collect();
 
     if json {
