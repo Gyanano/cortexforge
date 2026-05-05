@@ -84,6 +84,8 @@ cargo run -p forge-cli -- validate  # 校验配置
 ## 文档导航
 - [`docs/01-architecture.md`](./docs/01-architecture.md) — 唯一权威架构文档（SDK 树形版，含评估、
   协议、状态机、闸门、权限、真坑清单、MVP 标准）。
+- [`docs/02-implementation-status.md`](./docs/02-implementation-status.md) — 实施状态报告
+  （14 阶段完成情况、Crate 结构、关键 API 清单、MVP 验收结果、待完成项）。
 - [`docs/archive/`](./docs/archive/) — 早期 Teams 版评估报告与可行性深挖（历史参考）。
 - 原始脑暴（外部）：`/Users/gyanano/Documents/ObsidianBrain/0-Inbox/MCU嵌入式Claude Code开
   发环境设计【Draft】.md`。
