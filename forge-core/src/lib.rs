@@ -18,6 +18,7 @@ pub mod permission;
 pub mod protocol;
 pub mod spawn;
 pub mod state;
+pub mod telemetry;
 pub mod types;
 
 mod atomic;

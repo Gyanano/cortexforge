@@ -1,7 +1,7 @@
-//! State machine engine — 8-state FSM for per-node lifecycle (§3).
+//! State machine engine — 10-state FSM for per-node lifecycle (§3 + §3.4).
 //!
-//! States: idle → assigned → planning → implementing ↔ blocked → verifying → delivered / dead
-//! Full transition rules per §3.2.
+//! States: idle → assigned → planning → implementing ↔ blocked → verifying → delivered → monitoring ↔ diagnosing
+//! Full transition rules per §3.2 + §3.4 (runtime feedback loop).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -36,6 +36,10 @@ pub enum NodeStatus {
     Delivered,
     /// Unrecoverable (timeout, max retries, cycle, killed)
     Dead,
+    /// Code is flashed on MCU, monitoring runtime telemetry
+    Monitoring,
+    /// Anomaly detected, agent diagnosing root cause
+    Diagnosing,
 }
 
 impl NodeStatus {
@@ -63,6 +67,8 @@ impl NodeStatus {
             Self::Verifying => "verifying",
             Self::Delivered => "delivered",
             Self::Dead => "dead",
+            Self::Monitoring => "monitoring",
+            Self::Diagnosing => "diagnosing",
         }
     }
 }
@@ -85,6 +91,8 @@ impl std::str::FromStr for NodeStatus {
             "verifying" => Ok(Self::Verifying),
             "delivered" => Ok(Self::Delivered),
             "dead" => Ok(Self::Dead),
+            "monitoring" => Ok(Self::Monitoring),
+            "diagnosing" => Ok(Self::Diagnosing),
             _ => Err(format!("unknown node status: {s}")),
         }
     }
@@ -98,7 +106,10 @@ impl std::str::FromStr for NodeStatus {
 /// Illegal transitions return false; the caller should return `ForgeError::StateInvalid`.
 #[must_use]
 pub const fn is_valid_transition(from: NodeStatus, to: NodeStatus) -> bool {
-    use NodeStatus::{Assigned, Blocked, Dead, Delivered, Idle, Implementing, Planning, Verifying};
+    use NodeStatus::{
+        Assigned, Blocked, Dead, Delivered, Diagnosing, Idle, Implementing, Monitoring, Planning,
+        Verifying,
+    };
     matches!(
         (from, to),
         // idle → assigned | dead (TTL)
@@ -108,7 +119,11 @@ pub const fn is_valid_transition(from: NodeStatus, to: NodeStatus) -> bool {
             | (Planning | Implementing, Blocked)
             | (Implementing, Verifying | Dead)
             | (Blocked | Verifying, Dead)
-            | (Verifying, Delivered) // delivered / dead are terminal — no outgoing transitions
+            | (Verifying, Delivered) // delivered / dead are terminal for code-gen
+            // ── Runtime feedback loop (§3.4) ──
+            | (Delivered, Monitoring)  // code flashed, start monitoring
+            | (Monitoring, Diagnosing | Dead)  // anomaly detected or device unresponsive
+            | (Diagnosing, Implementing) // diagnosis done, fix in progress
     )
 }
 
@@ -250,6 +265,28 @@ impl StateMachine {
         self.ensure_current(NodeStatus::Verifying, "deliver")?;
         self.last_verify_result = Some("pass".into());
         self.transition(NodeStatus::Delivered)
+    }
+
+    // ── Runtime feedback loop (§3.4) ────────────────────────────────────
+
+    /// delivered → monitoring: code is flashed, begin runtime telemetry monitoring.
+    pub fn start_monitoring(&mut self) -> ForgeResult<()> {
+        self.ensure_current(NodeStatus::Delivered, "start_monitoring")?;
+        self.transition(NodeStatus::Monitoring)
+    }
+
+    /// monitoring → diagnosing: anomaly detected, begin root-cause diagnosis.
+    pub fn anomaly_detected(&mut self, summary: &str) -> ForgeResult<()> {
+        self.ensure_current(NodeStatus::Monitoring, "anomaly_detected")?;
+        self.progress_summary = format!("anomaly: {summary}");
+        self.transition(NodeStatus::Diagnosing)
+    }
+
+    /// diagnosing → implementing: root cause found, fixing the code.
+    pub fn diagnosis_complete(&mut self) -> ForgeResult<()> {
+        self.ensure_current(NodeStatus::Diagnosing, "diagnosis_complete")?;
+        self.progress_summary = String::new();
+        self.transition(NodeStatus::Implementing)
     }
 
     /// verifying → implementing: verify.sh failed, retrying.
@@ -500,12 +537,19 @@ mod tests {
         assert!(is_valid_transition(NodeStatus::Blocked, NodeStatus::Dead));
         assert!(is_valid_transition(NodeStatus::Idle, NodeStatus::Dead));
 
+        // Feedback loop transitions (§3.4)
+        assert!(is_valid_transition(NodeStatus::Delivered, NodeStatus::Monitoring));
+        assert!(is_valid_transition(NodeStatus::Monitoring, NodeStatus::Diagnosing));
+        assert!(is_valid_transition(NodeStatus::Diagnosing, NodeStatus::Implementing));
+        assert!(is_valid_transition(NodeStatus::Monitoring, NodeStatus::Dead));
+
         // Invalid paths
         assert!(!is_valid_transition(NodeStatus::Delivered, NodeStatus::Implementing));
         assert!(!is_valid_transition(NodeStatus::Dead, NodeStatus::Idle));
-        assert!(!is_valid_transition(NodeStatus::Delivered, NodeStatus::Dead));
         assert!(!is_valid_transition(NodeStatus::Planning, NodeStatus::Idle));
         assert!(!is_valid_transition(NodeStatus::Verifying, NodeStatus::Assigned));
+        assert!(!is_valid_transition(NodeStatus::Monitoring, NodeStatus::Idle));
+        assert!(!is_valid_transition(NodeStatus::Diagnosing, NodeStatus::Delivered));
     }
 
     #[test]

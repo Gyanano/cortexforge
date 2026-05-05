@@ -15,7 +15,7 @@ use std::path::Path;
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
-use crate::error::ForgeResult;
+use crate::error::{ForgeError, ForgeResult};
 use crate::types::NodeRole;
 
 // ─── §4.1 node.toml — NodeDefinition ───────────────────────────────────────
@@ -654,6 +654,178 @@ impl EscalatedTable {
         self.needs.retain(|e| {
             e.status != EscalatedStatus::Resolved && e.status != EscalatedStatus::Failed
         });
+    }
+}
+
+// ─── §4.8 .forge/telemetry/telemetry_declaration.toml ────────────────────
+
+/// Declares what telemetry data a node produces at runtime.
+/// Written during init or by the agent, read by the Orchestrator's telemetry scan pass.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TelemetryDeclaration {
+    #[serde(default)]
+    pub streams: Vec<TelemetryStream>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryStream {
+    /// Unique stream name (e.g. "uart_tx_status", "adc_current")
+    pub name: String,
+    /// References a channel in forge.toml [feedback].channels
+    pub channel: String,
+    /// Data format of this stream
+    pub format: TelemetryFormat,
+    /// Expected output rate (informational)
+    #[serde(default)]
+    pub rate_hz: Option<f64>,
+    /// Human-readable description
+    #[serde(default)]
+    pub desc: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TelemetryFormat {
+    /// "KEY: VALUE\n" — one key-value pair per line
+    KeyValue,
+    /// "1234,5678,90\n" — CSV row
+    Csv,
+    /// NDJSON — one JSON object per line
+    Json,
+    /// Raw hex dump "DEADBEEF\n"
+    Hex,
+}
+
+impl TelemetryDeclaration {
+    pub fn load(path: &Path) -> ForgeResult<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str(&content)
+            .map_err(|e| ForgeError::Config(format!("invalid telemetry declaration: {e}")))
+    }
+
+    pub fn save(&self, path: &Path) -> ForgeResult<()> {
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| ForgeError::Config(format!("serialize telemetry declaration: {e}")))?;
+        crate::atomic_write(path, &content)?;
+        Ok(())
+    }
+}
+
+// ─── §4.9 .forge/telemetry/expectations.toml ────────────────────────────
+
+/// Expected output patterns for rule-based anomaly detection.
+/// Written during init or updated by agents, read by the AnomalyDetector.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TelemetryExpectation {
+    #[serde(default)]
+    pub expect: Vec<ExpectationRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpectationRule {
+    /// Which telemetry stream this rule applies to
+    pub stream: String,
+    /// Type of rule
+    pub rule_type: ExpectationRuleType,
+    /// Rule-specific parameters
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
+    /// Severity when this rule is violated
+    #[serde(default = "default_anomaly_severity")]
+    pub severity: AnomalySeverity,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpectationRuleType {
+    /// Numeric value must be within [min, max]
+    Range { min: f64, max: f64 },
+    /// Value must equal this string exactly
+    Equals { value: String },
+    /// Value must contain this substring
+    Contains { substring: String },
+    /// Value must match this regex pattern
+    Matches { pattern: String },
+    /// Value must increase monotonically (counter/accumulator)
+    MonotonicIncreasing,
+    /// Value must appear at least every N seconds (liveness heartbeat)
+    Heartbeat { max_gap_sec: f64 },
+    /// Value must NOT contain any of these error substrings
+    NoError { error_substrings: Vec<String> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnomalySeverity {
+    /// Log only, no action
+    Info,
+    /// Log and notify
+    Warning,
+    /// Trigger auto-fix cycle (if auto_fix_enabled)
+    Critical,
+}
+
+impl AnomalySeverity {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Critical => "critical",
+        }
+    }
+}
+
+const fn default_anomaly_severity() -> AnomalySeverity {
+    AnomalySeverity::Warning
+}
+
+impl TelemetryExpectation {
+    pub fn load(path: &Path) -> ForgeResult<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str(&content)
+            .map_err(|e| ForgeError::Config(format!("invalid telemetry expectations: {e}")))
+    }
+
+    pub fn save(&self, path: &Path) -> ForgeResult<()> {
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| ForgeError::Config(format!("serialize telemetry expectations: {e}")))?;
+        crate::atomic_write(path, &content)?;
+        Ok(())
+    }
+}
+
+// ─── §4.10 .forge/telemetry/<ts>-<stream>.toml ──────────────────────────
+
+/// A single telemetry record captured from MCU runtime.
+/// Each record is stored as its own TOML file for concurrency safety.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryRecord {
+    pub ts: chrono::DateTime<chrono::FixedOffset>,
+    /// Which telemetry stream produced this
+    pub stream: String,
+    /// Which node owns this record
+    pub source: String,
+    /// Which physical channel carried the data
+    pub channel: String,
+    /// Original raw data line
+    pub raw: String,
+    /// Parsed key-value pairs
+    #[serde(default)]
+    pub parsed: BTreeMap<String, String>,
+}
+
+impl TelemetryRecord {
+    pub fn save(&self, path: &Path) -> ForgeResult<()> {
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| ForgeError::Config(format!("serialize telemetry record: {e}")))?;
+        crate::atomic_write(path, &content)?;
+        Ok(())
+    }
+
+    pub fn load(path: &Path) -> ForgeResult<Self> {
+        let content = std::fs::read_to_string(path)?;
+        toml::from_str(&content)
+            .map_err(|e| ForgeError::Config(format!("invalid telemetry record: {e}")))
     }
 }
 

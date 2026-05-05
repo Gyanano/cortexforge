@@ -90,6 +90,24 @@ pub enum EventType {
     EscalationFailed { key: String, requester: String },
     #[serde(rename = "dependency_chain_propagation")]
     DependencyChainPropagation { node: String, reason: String },
+
+    // ── Feedback / telemetry events (§10) ──
+    #[serde(rename = "telemetry_received")]
+    TelemetryReceived { node: String, stream: String, record_count: u32 },
+    #[serde(rename = "anomaly_detected")]
+    AnomalyDetected {
+        node: String,
+        stream: String,
+        severity: String,
+        expected: String,
+        actual: String,
+    },
+    #[serde(rename = "auto_fix_triggered")]
+    AutoFixTriggered { node: String, anomaly_stream: String, task_id: String },
+    #[serde(rename = "auto_fix_complete")]
+    AutoFixComplete { node: String, task_id: String, fix_summary: String },
+    #[serde(rename = "auto_fix_failed")]
+    AutoFixFailed { node: String, task_id: String, reason: String, retry_count: u32 },
 }
 
 impl std::fmt::Display for EventType {
@@ -115,6 +133,11 @@ impl std::fmt::Display for EventType {
             Self::DependencyEscalated { .. } => write!(f, "dependency_escalated"),
             Self::EscalationFailed { .. } => write!(f, "escalation_failed"),
             Self::DependencyChainPropagation { .. } => write!(f, "dependency_chain_propagation"),
+            Self::TelemetryReceived { .. } => write!(f, "telemetry_received"),
+            Self::AnomalyDetected { .. } => write!(f, "anomaly_detected"),
+            Self::AutoFixTriggered { .. } => write!(f, "auto_fix_triggered"),
+            Self::AutoFixComplete { .. } => write!(f, "auto_fix_complete"),
+            Self::AutoFixFailed { .. } => write!(f, "auto_fix_failed"),
         }
     }
 }
@@ -144,6 +167,11 @@ impl EventType {
             Self::DependencyEscalated { .. } => "dependency_escalated",
             Self::EscalationFailed { .. } => "escalation_failed",
             Self::DependencyChainPropagation { .. } => "dependency_chain_propagation",
+            Self::TelemetryReceived { .. } => "telemetry_received",
+            Self::AnomalyDetected { .. } => "anomaly_detected",
+            Self::AutoFixTriggered { .. } => "auto_fix_triggered",
+            Self::AutoFixComplete { .. } => "auto_fix_complete",
+            Self::AutoFixFailed { .. } => "auto_fix_failed",
         }
     }
 }

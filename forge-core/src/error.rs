@@ -26,8 +26,18 @@ pub enum ForgeError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
+    #[error("telemetry error: {0}")]
+    Telemetry(String),
+
     #[error("{0}")]
     Other(String),
+}
+
+impl ForgeError {
+    #[must_use]
+    pub fn telemetry(msg: impl Into<String>) -> Self {
+        Self::Telemetry(msg.into())
+    }
 }
 
 /// Alias for Result with `ForgeError`.

@@ -178,69 +178,62 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
         }
     };
 
-    // ── Step 3: MCU selection ──
+    // ── Step 3: Product description (§10) ──
+    let product_description = collect_product_description();
+    println!();
+
+    // ── Step 4: Clarifying Q&A (DeepSeek-driven) ──
+    let clarifications = if let Some(ref key) = deepseek_key {
+        run_clarifying_questions(key, &product_description)
+    } else {
+        println!("💡 Skipping clarifying questions (no DeepSeek key configured).");
+        println!("   The AI will design the module tree directly from your product description.\n");
+        Vec::new()
+    };
+
+    // ── Step 5: MCU selection ──
     let mcu = select_option("Select target MCU family:", MCU_OPTIONS);
     println!();
 
-    // ── Step 4: Toolchain ──
+    // ── Step 6: Toolchain ──
     let toolchain = select_option("Select build system / toolchain:", TOOLCHAIN_OPTIONS);
     println!();
 
-    // ── Step 5: Standard layers ──
-    let layers = select_layers(EMBEDDED_LAYERS);
+    // ── Step 7: Feedback channel analysis (§10) ──
+    let feedback_channels = select_feedback_channels();
     println!();
 
-    // ── Step 6: Module descriptions per layer ──
-    let mut layer_descriptions: Vec<(String, String)> = Vec::new();
-    for layer in &layers {
-        println!("Describe modules for layer '{layer}'.");
-        println!("  Examples: 'hal-clock needs to provide APB1_CLK, APB2_CLK, HCLK'");
-        println!("            'driver-ws2812 needs TIM2_CH1 PWM output on PA0'");
-        print!("  > ");
-        use std::io::Write;
-        let _ = std::io::stdout().flush();
-        let mut desc = String::new();
-        std::io::stdin().read_line(&mut desc).ok();
-        let desc = desc.trim().to_string();
-        if !desc.is_empty() {
-            layer_descriptions.push((layer.clone(), desc));
-        }
-    }
-    println!();
-
-    // ── Step 7: Create project skeleton ──
+    // ── Step 8: Create project skeleton ──
     std::fs::create_dir_all(root)?;
     std::fs::create_dir_all(root.join("modules"))?;
     std::fs::create_dir_all(root.join(".forge"))?;
 
-    // Write forge.toml (with API key in [llm] section if provided)
-    let forge_toml = build_forge_toml(&mcu, &toolchain, deepseek_key.as_deref());
+    // Build feedback channels list
+    let fb_channels: Vec<String> = feedback_channels.iter().map(|(c, _pins)| c.clone()).collect();
+
+    // Write forge.toml with product + feedback + llm sections
+    let forge_toml = build_forge_toml(
+        &mcu,
+        &toolchain,
+        deepseek_key.as_deref(),
+        &product_description,
+        &fb_channels,
+    );
     let forge_toml_path = root.join("forge.toml");
     forge_core::atomic_write(&forge_toml_path, &forge_toml)?;
     println!("Created {}", forge_toml_path.display());
 
-    // Create skeleton node.toml files for each layer with description
-    for (layer, desc) in &layer_descriptions {
-        let parts: Vec<&str> = desc.split_whitespace().collect();
-        let module_name =
-            parts.first().map_or(layer.as_str(), |s| s.strip_suffix(':').unwrap_or(s));
-        let sanitized = module_name.replace(['/', '\\', ' '], "-");
-        let dir = root.join("modules").join(&sanitized);
-        std::fs::create_dir_all(dir.join(".forge"))?;
-        std::fs::create_dir_all(dir.join("shared"))?;
-
-        let node_toml = build_skeleton_node_toml(&sanitized, layer);
-        forge_core::atomic_write(&dir.join("node.toml"), &node_toml)?;
-        if sanitized != module_name {
-            // Write description comment to a separate file for LLM to read
-            std::fs::write(dir.join("DESCRIPTION.txt"), desc)?;
-        }
-        println!(
-            "Created {}/node.toml ({})",
-            dir.strip_prefix(root).unwrap_or(&dir).display(),
-            layer
-        );
-    }
+    // Create a single root domain agent as the starting point.
+    // DeepSeek will design the full module tree during flesh-out.
+    let domain_dir = root.join("modules/firmware");
+    std::fs::create_dir_all(domain_dir.join(".forge"))?;
+    std::fs::create_dir_all(domain_dir.join("shared"))?;
+    let domain_toml = build_skeleton_node_toml("firmware");
+    forge_core::atomic_write(&domain_dir.join("node.toml"), &domain_toml)?;
+    println!(
+        "Created {}/node.toml (root domain agent)",
+        domain_dir.strip_prefix(root).unwrap_or(&domain_dir).display()
+    );
 
     // Write .gitignore
     let gitignore = root.join(".gitignore");
@@ -250,27 +243,28 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
         std::fs::write(&gitignore, format!("{existing}{additions}"))?;
     }
 
-    // ── Step 8: Generate flesh-out prompt + auto-flesh-out via DeepSeek ──
+    // ── Step 9: Generate flesh-out prompt + auto-flesh-out via DeepSeek ──
     let prompt_path = root.join(".forge/FLESH_OUT_PROMPT.md");
     let prompt = build_flesh_out_prompt(
         &project_name,
         &mcu,
         &toolchain,
         deepseek_key.is_some(),
-        &layers,
-        &layer_descriptions,
+        &product_description,
+        &clarifications,
+        &fb_channels,
     );
     std::fs::write(&prompt_path, &prompt)?;
 
     let mut auto_fleshed = false;
     if let Some(ref key) = deepseek_key {
         println!();
-        println!("Calling DeepSeek API to flesh out skeleton files...");
+        println!("🤖 DeepSeek is designing your module tree from the product description...");
         println!("  (This takes ~15-30 seconds, cost ~$0.01)");
         match call_deepseek_flesh_out(key, &prompt) {
             Ok(response) => match apply_flesh_out_response(root, &response) {
                 Ok(count) => {
-                    println!("✓ DeepSeek wrote {count} files successfully.");
+                    println!("✓ DeepSeek designed and wrote {count} files successfully.");
                     auto_fleshed = true;
                 }
                 Err(e) => {
@@ -294,23 +288,16 @@ fn cmd_init(root: &PathBuf, name: Option<String>) -> forge_core::error::ForgeRes
     println!();
     if auto_fleshed {
         println!("Next steps:");
-        println!("  1. Review the generated files (node.toml, verify.sh, CLAUDE.md, etc.)");
+        println!("  1. Review the AI-designed module tree (node.toml, verify.sh, CLAUDE.md, etc.)");
         println!("  2. forge validate  — check everything is correct");
         println!("  3. forge run       — start the orchestrator");
     } else {
         println!("Next steps:");
-        println!("  1. Review forge.toml and skeleton node.toml files");
+        println!("  1. Review forge.toml and the root domain agent skeleton");
         println!("  2. Add your DeepSeek API key to forge.toml:");
         println!("       [llm]");
         println!("       deepseek_api_key = \"sk-...\"");
-        println!("     Then re-run `forge init` to auto-flesh-out, or use curl manually:");
-        println!("     curl -s https://api.deepseek.com/v1/chat/completions \\");
-        println!("       -H \"Content-Type: application/json\" \\");
-        println!("       -H \"Authorization: Bearer \\$DEEPSEEK_API_KEY\" \\");
-        println!("       -d \"\\$(jq -n --arg prompt \"\\$(cat .forge/FLESH_OUT_PROMPT.md)\" \\");
-        println!(
-            "         '{{model:\"deepseek-chat\",messages:[{{role:\"user\",content:\\$prompt}}]}}')\""
-        );
+        println!("     Then re-run `forge init` to auto-design the module tree.");
         println!("  3. forge validate  — check everything is correct");
         println!("  4. forge run       — start the orchestrator");
     }
@@ -336,36 +323,6 @@ fn select_option(prompt: &str, options: &[(char, &str, &str)]) -> String {
         }
     }
     options[0].1.to_string()
-}
-
-fn select_layers(options: &[(char, &str, &str)]) -> Vec<String> {
-    println!("Select standard embedded layers to include (comma-separated, e.g. 'hal,bsp,mw'):");
-    for (key, name, desc) in options {
-        println!("  [{key}] {name} — {desc}");
-    }
-    print!("  layers (default: hal,bsp,mw): ");
-    use std::io::Write;
-    let _ = std::io::stdout().flush();
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input).ok();
-    let choices: Vec<String> = input
-        .trim()
-        .split(',')
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if choices.is_empty() {
-        return vec!["hal".into(), "bsp".into(), "mw".into()];
-    }
-    let mut selected = Vec::new();
-    for choice in choices {
-        for (key, name, _) in options {
-            if choice == key.to_string() || choice == name.to_lowercase() {
-                selected.push(name.to_string());
-            }
-        }
-    }
-    selected
 }
 
 // ── Hardcoded option tables ─────────────────────────────────────────────
@@ -396,38 +353,65 @@ const TOOLCHAIN_OPTIONS: &[(char, &str, &str)] = &[
     ('8', "other", "Custom / other toolchain"),
 ];
 
-/// Standard embedded layers
-const EMBEDDED_LAYERS: &[(char, &str, &str)] = &[
-    ('h', "hal", "Hardware Abstraction Layer — clock, gpio, uart, spi, i2c, tim, adc"),
-    ('b', "bsp", "Board Support Package — pin mappings, board init, peripheral config"),
-    ('m', "mw", "Middleware — RTOS, USB stack, filesystem, network, display driver"),
-    ('a', "app", "Application — main logic, state machines, user-facing features"),
-    ('d', "drv", "Drivers — external chips: sensors, LED drivers, motor controllers"),
-    ('t', "test", "Tests — unit tests, HIL tests, integration tests"),
-];
-
 // ─── forge.toml builder ─────────────────────────────────────────────────
 
-fn build_forge_toml(mcu: &str, toolchain: &str, deepseek_key: Option<&str>) -> String {
+fn build_forge_toml(
+    mcu: &str,
+    toolchain: &str,
+    deepseek_key: Option<&str>,
+    product_desc: &str,
+    fb_channels: &[String],
+) -> String {
     let llm_section = if let Some(key) = deepseek_key {
         format!(
-            "# DeepSeek API key for auto-fleshing out skeleton files during `forge init`.\n\
-             # Stored per-project — different projects can use different keys.\n\
-             # If absent, falls back to DEEPSEEK_API_KEY env var.\n\
-             [llm]\n\
+            "[llm]\n\
              deepseek_api_key = \"{key}\"\n"
         )
     } else {
         String::from(
-            "# To enable auto-flesh-out during `forge init`, add your DeepSeek API key here:\n\
-             # [llm]\n\
+            "# [llm]\n\
              # deepseek_api_key = \"sk-...\"\n",
         )
     };
 
+    let product_section = format!(
+        "# Product description — drives AI-based module tree design.\n\
+         [product]\n\
+         name = \"\"\n\
+         description = \"\"\"\n{product_desc}\n\"\"\"\n\
+         goal = \"\"\n\
+         constraints = []\n"
+    );
+
+    let feedback_channel_entries: String = fb_channels
+        .iter()
+        .map(|c| {
+            format!(
+                "[[feedback.channels]]\n\
+                 name = \"{c}\"\n\
+                 type = \"{c}\"\n\
+                 pins = []\n\
+                 params = {{}}\n"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let feedback_section = format!(
+        "# Runtime feedback channels for monitoring MCU execution.\n\
+         [feedback]\n\
+         telemetry_dir = \".forge/telemetry\"\n\n\
+         [feedback.anomaly_detection]\n\
+         window_samples = 20\n\
+         deviation_threshold = 0.15\n\
+         auto_fix_enabled = false\n\n\
+         {feedback_channel_entries}"
+    );
+
     format!(
         r#"# CortexForge project configuration
 # Target: {mcu} / {toolchain}
+# Generated by `forge init` — AI-designed from product description.
 
 [forge]
 schema_version = 1
@@ -466,12 +450,13 @@ model = "claude-haiku-4-5"
 event_bus = ".forge/eventbus.log"
 escalated = ".forge/escalated.toml"
 
+{product_section}
+{feedback_section}
 {llm_section}"#
     )
 }
 
-fn build_skeleton_node_toml(name: &str, layer: &str) -> String {
-    let _role = layer; // all skeleton nodes default to module role
+fn build_skeleton_node_toml(name: &str) -> String {
     format!(
         r#"# Skeleton node.toml — complete this file using the flesh-out prompt.
 # See docs/01-architecture.md §4.1 for full syntax.
@@ -505,20 +490,26 @@ model = "claude-sonnet-4-6"
 // ─── Flesh-out prompt builder ───────────────────────────────────────────
 
 fn build_flesh_out_prompt(
-    project_name: &str,
+    _project_name: &str,
     mcu: &str,
     toolchain: &str,
     api_ready: bool,
-    layers: &[String],
-    descriptions: &[(String, String)],
+    product_desc: &str,
+    clarifications: &[(String, String)],
+    fb_channels: &[String],
 ) -> String {
-    let desc_summary: String = descriptions
+    let qa_summary: String = clarifications
         .iter()
-        .map(|(layer, desc)| format!("  [{layer}] {desc}"))
+        .map(|(q, a)| format!("  Q: {q}\n  A: {a}"))
         .collect::<Vec<_>>()
-        .join("\n");
+        .join("\n\n");
 
-    let layers_str = layers.join(", ");
+    let fb_summary = if fb_channels.is_empty() {
+        "  (none configured)".into()
+    } else {
+        fb_channels.iter().map(|c| format!("  - {c}")).collect::<Vec<_>>().join("\n")
+    };
+
     let api_note = if api_ready {
         "DeepSeek API key is configured. Processing this prompt automatically."
     } else {
@@ -526,44 +517,36 @@ fn build_flesh_out_prompt(
     };
 
     format!(
-        r#"You are DeepSeek, processing a CortexForge MCU embedded project initialization prompt.
-Your job is to flesh out skeleton node.toml files, create verify.sh scripts, and write
-per-module CLAUDE.md files with production-quality, MCU-accurate configurations.
+        r#"You are DeepSeek, designing an embedded firmware project for CortexForge.
+Your job is to DESIGN THE COMPLETE MODULE TREE from the product description below,
+then create all node.toml files, verify.sh scripts, and per-module CLAUDE.md files.
 
-## Project Context
-- Project name: {project_name}
+## Product Description
+{product_desc}
+
+## Clarifying Q&A
+{qa_summary}
+
+## Hardware Context
 - Target MCU: {mcu}
 - Toolchain: {toolchain}
-- Active layers: {layers_str}
+- Feedback channels (for runtime monitoring):
+{fb_summary}
 - {api_note}
-
-## User Descriptions (per layer)
-{desc_summary}
 
 ## CortexForge Architecture Reference
 
-### Directory Layout
-Each module lives under `modules/<name>/`:
-```
-modules/<name>/
-  node.toml         — static node definition
-  verify.sh         — verification script (exit 0 = pass)
-  CLAUDE.md         — module-level methodology & toolchain notes
-  .forge/           — runtime state (created by SDK at startup)
-    state.toml
-    inbox/
-  shared/           — dependency protocol files
-    needs.toml      — declares what this module NEEDS
-    provides.toml   — declares what this module PROVIDES
-    resolved.toml   — written by Orchestrator, values from other modules
-    tasks.toml      — written by Orchestrator, tasks to fulfill
-  deliverables/     — build outputs after verify passes
-```
+### Module Tree Design Rules
+1. Start with a root Domain Agent at `modules/firmware/` (depth=1)
+2. Design sub-modules under `modules/firmware/submodules/<name>/` (depth=2+)
+3. Use standard embedded layers: HAL (peripheral drivers) → BSP (board config) → MW (middleware) → APP (application logic)
+4. Each module gets its own directory with node.toml, verify.sh, CLAUDE.md
+5. Interface keys are UPPER_SNAKE_CASE (e.g. APB1_CLK, UART1_TX_PIN, TIM2_CH1_PWM)
 
 ### node.toml Format
 ```toml
 [node]
-name = "<unique-name>"           # e.g. "hal-clock", "bsp-uart", "driver-ws2812"
+name = "<unique-name>"           # e.g. "hal-clock", "bsp-uart", "app-controller"
 role = "<role>"                  # domain | module | submodule
 cwd = "modules/<name>"           # relative path from project root
 parent = "<parent-node-name>"    # empty for root domain agent
@@ -576,7 +559,6 @@ spawn_strategy = "lazy"           # lazy (on-demand) | eager (at start)
 [provides]
 declared = ["INTERFACE_KEY_1", "INTERFACE_KEY_2"]
 # UPPER_SNAKE_CASE identifiers other modules can depend on.
-# Examples: APB1_CLK, UART1_TX_PIN, TIM2_CH1_PWM, SPI1_SCK_PIN
 
 [budget]
 max_tokens = 200_000
@@ -585,16 +567,14 @@ max_retries = 3
 max_subprocess = 4
 
 [runtime]
-model = "claude-sonnet-4-6"      # Claude model used by spawned agent at runtime
+model = "claude-sonnet-4-6"
 ```
 
 ### verify.sh Requirements
-- Must be executable (`chmod +x verify.sh`)
 - Exit code 0 = pass, non-zero = fail
-- Should compile the module, run unit tests, check static analysis, verify
-  memory/flash constraints, and validate public interface compatibility
-
-Example for {toolchain}:
+- Compile the module, run tests, check memory/flash constraints
+- Include telemetry output stubs for the configured feedback channels
+- Example for {toolchain}:
 ```sh
 #!/bin/sh
 set -e
@@ -602,72 +582,212 @@ echo "[<module>] building..."
 # arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -std=c11 -Wall -Werror -c src/*.c
 echo "[<module>] running tests..."
 echo "[<module>] verify PASS"
+# Telemetry: outputs are parsed by the host collector for runtime monitoring
 ```
 
 ### CLAUDE.md Content
-Each module's CLAUDE.md should document:
+Document for each module:
 1. Toolchain assumptions (compiler, flags, linker script)
 2. MCU-specific details (register maps, clock tree, peripheral config)
 3. Coding conventions used in this module
 4. Dependencies on other modules (do NOT duplicate needs.toml)
-5. Test methodology (how to run verify.sh locally)
+5. Test methodology
 
 ### Dependency Protocol
-- Modules declare needs in shared/needs.toml (interface keys like APB1_CLK)
-- Modules declare provides in shared/provides.toml
+- shared/needs.toml declares what a module NEEDS from other modules
+- shared/provides.toml declares what a module PROVIDES (with seq=1)
 - Orchestrator matches needs → provides and writes resolved values
-- Key naming: UPPER_SNAKE_CASE with peripheral instance number
-  (e.g. UART1_TX_PIN vs UART2_TX_PIN)
-
-### Role Definitions
-- **domain**: Manages sub-modules, requests child spawn, aggregates child states.
-  Only domain agents can request spawn.
-- **module**: Implements a specific hardware/software module. No spawn authority.
-- **submodule**: Same as module, for deeper nesting.
 
 ## Your Task
 
-For each module in the user descriptions above:
+1. **Design the module tree**: Based on the product description, decide what
+   modules are needed. Use MCU datasheet knowledge for {mcu}
+   (e.g., STM32F1: APB1 max 36MHz, APB2 max 72MHz, 4 timers, 2 SPI, 2 I2C, 3 USART).
+   Write a `modules/firmware/node.toml` (domain agent) with `children.declared`
+   listing all sub-module names.
 
-1. **Complete node.toml**: Fill in `provides.declared` with concrete interface keys
-   based on what this module offers. Use MCU datasheet knowledge for {mcu}
-   (e.g., STM32F1 clock tree: APB1 max 36MHz, APB2 max 72MHz).
-   Fill in `children.declared` if the module needs sub-modules.
+2. **Create each sub-module**: For each sub-module, write its node.toml with
+   concrete `provides.declared` interface keys, verify.sh, and CLAUDE.md.
 
-2. **Create verify.sh**: Write a verification script for {toolchain} + {mcu}.
-   Include compile commands, basic test structure, and an exit 0 at the end.
+3. **Define dependencies**: Write shared/needs.toml and shared/provides.toml
+   for each module so the Orchestrator can resolve the dependency graph.
 
-3. **Create CLAUDE.md**: Document toolchain assumptions, register maps,
-   peripheral configuration, and coding conventions for this module.
-
-4. **Define dependencies**: Determine what interface keys each module needs
-   (write to shared/needs.toml) and what it provides (write to
-   shared/provides.toml with seq=1).
+4. **Include telemetry**: The firmware should output runtime telemetry over
+   the configured feedback channels. Include telemetry_declaration.toml and
+   expectations.toml in the root domain agent's .forge/telemetry/ directory.
 
 ## Output Format
 
-For each module, output complete file contents in EXACTLY this format:
+=== modules/firmware/node.toml ===
+<complete domain agent node.toml with children.declared list>
 
-=== modules/<name>/node.toml ===
-<complete node.toml>
-
-=== modules/<name>/verify.sh ===
+=== modules/firmware/verify.sh ===
 <complete verify.sh>
 
-=== modules/<name>/CLAUDE.md ===
+=== modules/firmware/CLAUDE.md ===
 <complete CLAUDE.md>
 
-=== modules/<name>/shared/needs.toml ===
-<complete needs.toml, or "NONE" if no dependencies>
+=== modules/firmware/submodules/<name1>/node.toml ===
+<complete node.toml>
 
-=== modules/<name>/shared/provides.toml ===
-<complete provides.toml with seq=1, or "NONE" if nothing to provide>
+... (repeat for each sub-module: node.toml, verify.sh, CLAUDE.md, needs.toml, provides.toml)
 
-CRITICAL: Use exactly "=== filename ===" markers. Write production-quality,
-MCU-accurate configurations. No placeholder text.
+=== modules/firmware/.forge/telemetry/telemetry_declaration.toml ===
+<complete telemetry declaration>
+
+=== modules/firmware/.forge/telemetry/expectations.toml ===
+<complete expectations with rules for runtime anomaly detection>
+
+CRITICAL: Use exactly "=== path ===" markers. Design production-quality,
+MCU-accurate configurations. Design the module tree from scratch based on
+the product description — do NOT ask the user to specify layers.
 "#
     )
 }
+
+// ─── Product-first init helpers ──────────────────────────────────────────
+
+/// Collect a multi-line product description from the user.
+/// Input ends when the user enters an empty line.
+fn collect_product_description() -> String {
+    println!("What product are you building?");
+    println!("  Describe your product in detail — its purpose, what it does, any");
+    println!("  constraints (power budget, flash size, real-time requirements, etc.).");
+    println!("  Press Enter twice when done:\n");
+    use std::io::Write;
+    let mut lines: Vec<String> = Vec::new();
+    loop {
+        print!("  > ");
+        let _ = std::io::stdout().flush();
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).ok();
+        let trimmed = line.trim().to_string();
+        if trimmed.is_empty() {
+            if lines.is_empty() {
+                continue; // skip leading empty lines
+            }
+            break;
+        }
+        lines.push(trimmed);
+    }
+    if lines.is_empty() {
+        println!("  → No description provided. Using placeholder.\n");
+        String::from("An embedded MCU firmware project")
+    } else {
+        println!();
+        lines.join("\n")
+    }
+}
+
+/// Ask DeepSeek to analyze the product description and generate clarifying questions.
+/// Returns user answers as (question, answer) pairs.
+fn run_clarifying_questions(api_key: &str, product_desc: &str) -> Vec<(String, String)> {
+    use std::io::Write;
+
+    let analysis_prompt = format!(
+        "You are helping to set up a CortexForge embedded firmware project.\n\n\
+         ## Product Description\n{product_desc}\n\n\
+         ## Your Task\n\
+         Analyze this product description and generate 3-5 clarifying questions that will help
+         design the embedded firmware module tree. Focus on:\n\
+         1. Hardware peripherals needed (UART, SPI, I2C, timers, ADC, PWM, etc.)\n\
+         2. Real-time constraints (interrupt latency, control loop frequency)\n\
+         3. Power management requirements\n\
+         4. Communication protocols (BLE, WiFi, CAN, RS485, etc.)\n\
+         5. Storage / logging requirements\n\n\
+         Return ONLY the questions, one per line. No numbering, no commentary.\n\
+         Each line should be a clear, specific question."
+    );
+
+    let questions = match call_deepseek_flesh_out(api_key, &analysis_prompt) {
+        Ok(response) => response
+            .lines()
+            .filter(|l| !l.trim().is_empty() && l.contains('?'))
+            .map(|l| l.trim().to_string())
+            .collect::<Vec<_>>(),
+        Err(e) => {
+            println!("  ⚠ Could not generate questions: {e}");
+            return Vec::new();
+        }
+    };
+
+    if questions.is_empty() {
+        return Vec::new();
+    }
+
+    println!("Based on your product description, a few clarifying questions:\n");
+    let mut answers = Vec::new();
+    for q in &questions {
+        println!("  {q}");
+        print!("  > ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).ok();
+        let answer = answer.trim().to_string();
+        if !answer.is_empty() {
+            answers.push((q.clone(), answer));
+        }
+    }
+    println!();
+    answers
+}
+
+/// Multi-select feedback channels with pin entry per channel.
+fn select_feedback_channels() -> Vec<(String, String)> {
+    use std::io::Write;
+
+    println!("Runtime feedback channels — how will you monitor the MCU at runtime?");
+    println!("  Select channels for runtime telemetry (comma-separated, e.g. '1,3,6'):\n");
+    for (key, name, desc) in FEEDBACK_CHANNEL_OPTIONS {
+        println!("  [{key}] {name} — {desc}");
+    }
+    print!("\n  channels (default: 1=UART): ");
+    let _ = std::io::stdout().flush();
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).ok();
+    let choices: Vec<String> = input
+        .trim()
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut selected = Vec::new();
+    if choices.is_empty() {
+        // Default: UART
+        println!("\n  Configuring UART channel:");
+        print!("    Pins (e.g. PA9,PA10 for TX,RX): ");
+        let _ = std::io::stdout().flush();
+        let mut pins = String::new();
+        std::io::stdin().read_line(&mut pins).ok();
+        selected.push(("UART".into(), pins.trim().to_string()));
+    } else {
+        for choice in &choices {
+            for (key, name, _desc) in FEEDBACK_CHANNEL_OPTIONS {
+                if choice == &key.to_string() || choice == &name.to_lowercase() {
+                    println!("\n  Configuring {name} channel:");
+                    print!("    Pins: ");
+                    let _ = std::io::stdout().flush();
+                    let mut pins = String::new();
+                    std::io::stdin().read_line(&mut pins).ok();
+                    selected.push((name.to_string(), pins.trim().to_string()));
+                }
+            }
+        }
+    }
+    selected
+}
+
+/// Feedback channel options for the init wizard.
+const FEEDBACK_CHANNEL_OPTIONS: &[(char, &str, &str)] = &[
+    ('1', "UART", "Serial debug output — most common. Connect via USB-UART adapter"),
+    ('2', "SWO", "Serial Wire Output — ARM Cortex debug trace via SWD debugger"),
+    ('3', "RTT", "Real-Time Transfer — SEGGER J-Link high-speed bidirectional channel"),
+    ('4', "I2C", "I2C bus monitor — sniff sensor readings or status registers"),
+    ('5', "SPI", "SPI bus monitor — capture display or flash traffic"),
+    ('6', "GPIO", "GPIO toggles — timing markers, state changes, logic analyzer triggers"),
+    ('7', "ADC", "Analog readback — monitor power rails, current sense, or analog signals"),
+];
 
 // ─── DeepSeek API key resolution ──────────────────────────────────────────
 

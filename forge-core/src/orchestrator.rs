@@ -277,6 +277,171 @@ impl Orchestrator {
             }
         }
 
+        // ── Telemetry scan (§10) — after heartbeat scan ──
+        self.telemetry_scan(&declared)?;
+
+        Ok(())
+    }
+
+    /// Scan telemetry from all `Monitoring` nodes, detect anomalies, trigger auto-fix.
+    fn telemetry_scan(&mut self, declared: &[(String, std::path::PathBuf)]) -> ForgeResult<()> {
+        use crate::event::EventType;
+        use crate::protocol::{NodeState, TelemetryExpectation};
+        use crate::state::NodeStatus;
+        use crate::telemetry::{AnomalyDetector, TelemetryCollector};
+
+        let scan_interval = self.config.forge.scan_interval_sec as i64;
+
+        for (name, cwd) in declared {
+            let state_file = cwd.join(".forge/state.toml");
+            let state = match crate::safe_read_toml::<NodeState>(&state_file) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            let status: NodeStatus = state.state.current.parse().unwrap_or(NodeStatus::Dead);
+            if status != NodeStatus::Monitoring {
+                continue;
+            }
+
+            // Load expectations
+            let expectations_path = cwd.join(".forge/telemetry/expectations.toml");
+            let expectations = crate::safe_read_toml::<TelemetryExpectation>(&expectations_path)
+                .unwrap_or_default();
+
+            // Collect new telemetry records
+            let telemetry_dir = cwd.join(".forge/telemetry");
+            let since: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now()
+                .checked_sub_signed(chrono::Duration::seconds(scan_interval * 2))
+                .unwrap_or(chrono::Utc::now())
+                .into();
+
+            let records = match TelemetryCollector::scan_file_records(&telemetry_dir, since) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!(node = %name, error = %e, "telemetry scan failed");
+                    continue;
+                }
+            };
+
+            if records.is_empty() {
+                continue;
+            }
+
+            // Emit telemetry_received
+            for record in &records {
+                let _ = self.eventbus.append(&crate::event::EventEntry::new(
+                    name,
+                    EventType::TelemetryReceived {
+                        node: name.clone(),
+                        stream: record.stream.clone(),
+                        record_count: records.len() as u32,
+                    },
+                ));
+            }
+
+            // Run anomaly detection
+            let mut detector = AnomalyDetector::new(
+                &expectations,
+                self.config.feedback.anomaly_detection.window_samples as usize,
+            );
+
+            for record in &records {
+                for finding in detector.feed(record) {
+                    tracing::warn!(
+                        node = %name,
+                        stream = %finding.stream,
+                        severity = ?finding.severity,
+                        "anomaly detected"
+                    );
+
+                    let _ = self.eventbus.append(&crate::event::EventEntry::new(
+                        name,
+                        EventType::AnomalyDetected {
+                            node: name.clone(),
+                            stream: finding.stream.clone(),
+                            severity: finding.severity.as_str().into(),
+                            expected: finding.expected.clone(),
+                            actual: finding.actual.clone(),
+                        },
+                    ));
+
+                    // Trigger auto-fix for critical anomalies
+                    if finding.severity == crate::protocol::AnomalySeverity::Critical
+                        && self.config.feedback.anomaly_detection.auto_fix_enabled
+                    {
+                        if let Err(e) = self.trigger_auto_fix(name, cwd, &finding) {
+                            tracing::error!(node = %name, error = %e, "auto-fix trigger failed");
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Trigger the diagnose → fix → rebuild → reflash cycle for a node.
+    fn trigger_auto_fix(
+        &mut self,
+        node_name: &str,
+        cwd: &std::path::Path,
+        finding: &crate::telemetry::AnomalyFinding,
+    ) -> ForgeResult<()> {
+        let task_id = format!(
+            "auto-fix-{}",
+            uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0000")
+        );
+
+        // Write diagnostic task to node's inbox
+        let inbox_dir = cwd.join(".forge/inbox");
+        std::fs::create_dir_all(&inbox_dir)?;
+
+        let msg = crate::protocol::InboxMessage {
+            schema_version: 1,
+            id: uuid::Uuid::new_v4().to_string(),
+            from: "orchestrator".into(),
+            to: node_name.to_string(),
+            created_at: chrono::Utc::now().into(),
+            kind: crate::protocol::MessageKind::Task,
+            ref_task_id: Some(task_id.clone()),
+            priority: "P0".into(),
+            body: crate::protocol::MessageBody {
+                title: format!("Diagnose and fix anomaly in stream '{}'", finding.stream),
+                text: format!(
+                    "Anomaly detected at runtime:\n\
+                     - Stream: {}\n\
+                     - Expected: {}\n\
+                     - Actual: {}\n\
+                     - Severity: {}\n\n\
+                     Diagnose the root cause, implement a fix, rebuild, reflash, and verify.",
+                    finding.stream,
+                    finding.expected,
+                    finding.actual,
+                    finding.severity.as_str()
+                ),
+                ..Default::default()
+            },
+        };
+        let _ = msg.write_to_inbox(&inbox_dir);
+
+        // Transition node to Diagnosing
+        let state_path = cwd.join(".forge/state.toml");
+        if let Ok(mut state) = crate::protocol::NodeState::load(&state_path) {
+            state.state.current = "diagnosing".into();
+            let _ = state.save(&state_path);
+        }
+
+        // Emit auto_fix_triggered event
+        let _ = self.eventbus.append(&crate::event::EventEntry::new(
+            "orchestrator",
+            crate::event::EventType::AutoFixTriggered {
+                node: node_name.to_string(),
+                anomaly_stream: finding.stream.clone(),
+                task_id,
+            },
+        ));
+
         Ok(())
     }
 

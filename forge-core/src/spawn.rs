@@ -654,6 +654,8 @@ mod tests {
             budget: BudgetSection::default(),
             paths: PathsSection::default(),
             llm: Default::default(),
+            product: Default::default(),
+            feedback: Default::default(),
         }
     }
 

@@ -523,6 +523,8 @@ mod tests {
             budget: Default::default(),
             paths: Default::default(),
             llm: Default::default(),
+            product: Default::default(),
+            feedback: Default::default(),
         }
     }
 }

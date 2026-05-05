@@ -1,11 +1,17 @@
 //! Configuration types for forge.toml and node.toml.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Root configuration (forge.toml).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForgeConfig {
     pub forge: ForgeSection,
+    #[serde(default)]
+    pub product: ProductSection,
+    #[serde(default)]
+    pub feedback: FeedbackSection,
     #[serde(default)]
     pub budget: BudgetSection,
     #[serde(default)]
@@ -47,6 +53,11 @@ impl ForgePaths {
     #[must_use]
     pub fn pid_file(&self, node_cwd: &str) -> std::path::PathBuf {
         self.root.join(node_cwd).join(".forge/pid")
+    }
+
+    #[must_use]
+    pub fn telemetry_dir(&self, node_cwd: &str) -> std::path::PathBuf {
+        self.root.join(node_cwd).join(".forge/telemetry")
     }
 }
 
@@ -123,6 +134,99 @@ impl Default for GlobalBudget {
     fn default() -> Self {
         Self { max_tokens_total: Some(5_000_000), max_wallclock_total_sec: Some(14400) }
     }
+}
+
+// ── Product section (§10) ─────────────────────────────────────────────────
+
+/// High-level product description — what the user is building.
+/// This drives AI-based module tree design during `forge init`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProductSection {
+    /// Short product name (e.g. "Smart LED Strip Controller")
+    #[serde(default)]
+    pub name: String,
+    /// Free-text product description
+    #[serde(default)]
+    pub description: String,
+    /// What the product should accomplish
+    #[serde(default)]
+    pub goal: String,
+    /// Hard constraints (e.g. "must fit in 64KB flash", "< 50mA sleep current")
+    #[serde(default)]
+    pub constraints: Vec<String>,
+}
+
+// ── Feedback section (§10) ────────────────────────────────────────────────
+
+/// Runtime execution feedback configuration.
+/// Defines how CortexForge monitors MCU program execution at runtime.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FeedbackSection {
+    /// Available monitoring channels on the target hardware
+    #[serde(default)]
+    pub channels: Vec<FeedbackChannelConfig>,
+    /// Directory for telemetry data files (default: ".forge/telemetry")
+    #[serde(default = "default_telemetry_dir")]
+    pub telemetry_dir: String,
+    /// Anomaly detection configuration
+    #[serde(default)]
+    pub anomaly_detection: AnomalyDetectionConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackChannelConfig {
+    /// Unique name for this channel (e.g. "debug-uart", "i2c-sensors")
+    pub name: String,
+    /// Physical interface type
+    #[serde(rename = "type")]
+    pub channel_type: ChannelType,
+    /// Pin assignments (e.g. ["PA9", "PA10"] for UART TX/RX)
+    #[serde(default)]
+    pub pins: Vec<String>,
+    /// Additional parameters (baud_rate, address, etc.)
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelType {
+    Uart,
+    I2c,
+    Spi,
+    Swo,
+    Rtt,
+    Gpio,
+    Adc,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnomalyDetectionConfig {
+    /// How many samples to buffer per stream for pattern matching
+    #[serde(default = "default_anomaly_window")]
+    pub window_samples: u32,
+    /// Deviation threshold (0.0-1.0) for numeric range rules
+    #[serde(default = "default_anomaly_threshold")]
+    pub deviation_threshold: f64,
+    /// Whether to auto-trigger the diagnose→fix→rebuild→reflash cycle
+    #[serde(default)]
+    pub auto_fix_enabled: bool,
+}
+
+impl Default for AnomalyDetectionConfig {
+    fn default() -> Self {
+        Self { window_samples: 20, deviation_threshold: 0.15, auto_fix_enabled: false }
+    }
+}
+
+const fn default_anomaly_window() -> u32 {
+    20
+}
+const fn default_anomaly_threshold() -> f64 {
+    0.15
+}
+fn default_telemetry_dir() -> String {
+    ".forge/telemetry".into()
 }
 
 /// LLM configuration section — API keys stored per-project (not in environment).
